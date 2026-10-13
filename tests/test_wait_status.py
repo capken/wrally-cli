@@ -92,3 +92,34 @@ def test_status_reads_only_the_manifest(ws):
     assert by_key["02"] == ("set/0", "-", "-", "-")
     assert by_key["99"][1] == "done (no file)"
     assert rows[-1][0] == "01"  # 做完的排最后
+
+
+def test_status_in_a_project_directory_lists_episodes(tmp_path, stories):
+    """项目目录里没有清单：status 每集一行，其余命令提示要到某一集的目录下跑。"""
+    from typer.testing import CliRunner
+
+    from wrally.api.models import Shot
+    from wrally.cli import app
+    from wrally.commands.pull import merge
+    from wrally.commands.status import project_status
+    from wrally.workspace import Workspace
+
+    (tmp_path / "wrally.yaml").write_text("project_id: proj\n", encoding="utf-8")
+    for name in ("ep2", "ep1"):
+        ep = Workspace(tmp_path / name)
+        ep.root.mkdir()
+        merge(ep, [Shot.from_story(s) for s in stories], project_id="proj", series_id=name)
+    (tmp_path / "notes").mkdir()  # 没有清单的子目录不算一集
+    data = ep.load()
+    data["shots"][1]["video"] = {"status": "done", "file": ".wrally/video/01.mp4"}
+    ep.save(data)
+    for rel in (".wrally/video/01.mp4", "ep1.mp4"):
+        (ep.root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (ep.root / rel).write_bytes(b"x")
+    line, rows = project_status(tmp_path)
+    assert line.startswith("2 episodes: 1 with a film")
+    assert rows == [("ep1", "4", "1", "1", "0", "yes"), ("ep2", "4", "1", "0", "0", "-")]
+    result = CliRunner().invoke(app, ["status", "-C", str(tmp_path)])
+    assert result.exit_code == 0 and result.output.splitlines()[0] == line
+    result = CliRunner().invoke(app, ["lint", "-C", str(tmp_path)])
+    assert result.exit_code == 2 and "project directory: use -C <episode>" in result.output

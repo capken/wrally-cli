@@ -195,8 +195,16 @@ def new(
 @app.command()
 @handle_errors
 def status(directory: DirOpt = Path("."), as_json: JsonOpt = False) -> None:
-    """打印全集进度表。只读清单，不调用远端。"""
-    line, rows = status_cmd.status(Workspace(directory))
+    """打印全集进度表。只读清单，不调用远端。
+
+    在项目目录（有 wrally.yaml、没有 episode.yaml）下运行时每集一行。
+    """
+    ws = Workspace(directory)
+    if not ws.manifest_path.exists() and (directory / "wrally.yaml").is_file():
+        line, rows = status_cmd.project_status(directory)
+        _emit(line, status_cmd.PROJECT_HEADERS, rows, as_json)
+        return
+    line, rows = status_cmd.status(ws)
     _emit(line, status_cmd.HEADERS, rows, as_json, details="episode.yaml")
 
 
