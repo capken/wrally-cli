@@ -1,0 +1,19 @@
+# 工作区下载物、抽帧图、报告和原始返回（含签名地址与提示词），不提交
+.wrally/
+
+# 凭证
+token.json
+client.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+.DS_Store
+
+# 进度网页（含提示词全文）
+page.html

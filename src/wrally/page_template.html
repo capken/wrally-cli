@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wrally</title>
+<style>
+:root {
+  --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --faint: #86868b;
+  --line: rgba(0, 0, 0, .08); --fill: rgba(0, 0, 0, .05); --accent: #0071e3; --media: #000;
+  --bar: rgba(245, 245, 247, .82);
+  --green: #1d8a3c; --orange: #b25000; --red: #d70015; --gray: #6e6e73;
+  --green-bg: rgba(52, 199, 89, .16); --orange-bg: rgba(255, 149, 0, .16);
+  --red-bg: rgba(255, 59, 48, .14); --gray-bg: rgba(0, 0, 0, .06); --blue-bg: rgba(0, 113, 227, .1);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .04);
+  --side: 272px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --card: #1d1d1f; --text: #f5f5f7; --muted: #a1a1a6; --faint: #86868b;
+    --line: rgba(255, 255, 255, .12); --fill: rgba(255, 255, 255, .08); --accent: #2997ff;
+    --bar: rgba(0, 0, 0, .78);
+    --green: #30d158; --orange: #ff9f0a; --red: #ff453a; --gray: #a1a1a6;
+    --gray-bg: rgba(255, 255, 255, .1); --blue-bg: rgba(41, 151, 255, .16); --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 20px; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 17px/1.47 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  letter-spacing: -.01em; -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; }
+.layout { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); max-width: 1280px; margin: 0 auto; }
+
+/* 侧栏：标题、进度、筛选和镜头导航，滚动时始终留在原位 */
+.side {
+  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 18px;
+  padding: 28px 14px 16px 22px; min-width: 0;
+}
+.crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; font-size: 12px; margin-bottom: -6px; }
+.crumbs a { color: var(--accent); text-decoration: none; padding: 2px 6px; border-radius: 980px; text-transform: uppercase; }
+.crumbs a.back { padding-left: 0; margin-right: 2px; text-transform: none; font-size: 13px; }
+.crumbs a:hover { text-decoration: underline; }
+.crumbs a[aria-current="page"] { background: var(--fill); color: var(--text); font-weight: 600; }
+.eyebrow { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+h1 {
+  margin: 2px 0 0; font: 600 28px/1.14 -apple-system, "SF Pro Display", "PingFang SC", sans-serif;
+  letter-spacing: -.015em; overflow-wrap: anywhere;
+}
+.fresh { font-size: 12px; color: var(--faint); margin-top: 6px; min-height: 18px; }
+.fresh button { background: var(--accent); color: #fff; padding: 4px 12px; border-radius: 980px; font-size: 12px; }
+.stats { display: grid; gap: 10px; }
+.stat { display: grid; grid-template-columns: 1fr auto; align-items: baseline; row-gap: 5px; font-size: 13px; }
+.stat .what { color: var(--muted); }
+.stat .num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat .num small { font-size: inherit; font-weight: 400; color: var(--faint); }
+.meter { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--fill); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.seg { display: flex; background: var(--fill); border-radius: 980px; padding: 2px; }
+.seg button { flex: 1; font-size: 13px; padding: 4px 12px; border-radius: 980px; color: var(--muted); white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.nav { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -8px; padding: 0 0 8px; overscroll-behavior: contain; }
+.nav a {
+  display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: 9px; text-decoration: none;
+  color: var(--text); font-size: 14px; line-height: 1.3;
+}
+.nav a:hover { background: var(--fill); }
+.nav a[aria-current="true"] { background: var(--card); box-shadow: var(--shadow); }
+.nav a b { font-weight: 600; font-variant-numeric: tabular-nums; flex: none; }
+.nav a .snip { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav a[aria-current="true"] .snip { color: var(--text); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gray); flex: none; }
+.dot.done, .dot.skipped { background: var(--green); }
+.dot.stale, .dot.pending, .dot.running, .dot.missing { background: var(--orange); }
+.dot.failed { background: var(--red); }
+.dot.film { background: var(--accent); }
+.keys { font-size: 12px; color: var(--faint); }
+kbd {
+  font: 11px ui-monospace, "SF Mono", monospace; background: var(--fill); border-radius: 4px; padding: 1px 5px;
+}
+
+/* 主栏 */
+main { padding: 28px 22px 96px 14px; min-width: 0; }
+.warn { margin: 0 0 16px; font-size: 14px; color: var(--orange); }
+.shot { background: var(--card); border-radius: 22px; padding: 28px; margin-bottom: 20px; box-shadow: var(--shadow); }
+.shot > header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.shot h2 {
+  margin: 0; font: 600 40px/1.1 -apple-system, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.pills { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 3px 10px;
+  border-radius: 980px; background: var(--gray-bg); color: var(--gray); white-space: nowrap;
+}
+.pill.done { background: var(--green-bg); color: var(--green); }
+.pill.stale, .pill.pending, .pill.running, .pill.missing { background: var(--orange-bg); color: var(--orange); }
+.pill.failed { background: var(--red-bg); color: var(--red); }
+.line { margin: 14px 0 0; font-size: 21px; line-height: 1.38; font-weight: 500; letter-spacing: -.005em; }
+.line.none { color: var(--faint); font-weight: 400; font-size: 17px; }
+.media { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px; }
+figure { margin: 0; min-width: 0; }
+.frame {
+  position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: var(--fill);
+  display: grid; place-items: center; color: var(--faint); font-size: 14px;
+}
+.frame img, .frame video { width: 100%; height: 100%; object-fit: contain; background: var(--media); display: block; }
+.frame img { cursor: zoom-in; }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; display: flex; gap: 8px; }
+figcaption b { color: var(--text); font-weight: 600; }
+.voice { display: flex; align-items: center; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
+.voice .tag { font-size: 13px; color: var(--muted); }
+.voice audio { flex: 1; min-width: 240px; height: 36px; }
+.voice .empty { flex: 1; font-size: 14px; color: var(--faint); }
+.film .frame { margin-top: 18px; border-radius: 16px; max-width: 720px; }
+.film p { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+details { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; }
+details + details { margin-top: 14px; }
+summary {
+  list-style: none; cursor: pointer; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+}
+summary::-webkit-details-marker { display: none; }
+summary::before {
+  content: ""; width: 7px; height: 7px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint);
+  transform: rotate(-45deg); transition: transform .3s ease; margin: 0 4px 0 2px;
+}
+details[open] > summary::before { transform: rotate(45deg); }
+summary small { font-weight: 400; color: var(--muted); font-size: 13px; }
+summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--accent); }
+.cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
+.cand {
+  position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: var(--fill);
+  display: grid; place-items: center; font-size: 12px; color: var(--faint);
+}
+.cand img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
+.cand.picked { outline: 3px solid var(--accent); outline-offset: -3px; }
+.cand span {
+  position: absolute; left: 6px; top: 6px; font-size: 12px; font-weight: 600; color: #fff;
+  background: rgba(0, 0, 0, .55); border-radius: 6px; padding: 1px 7px;
+}
+.cand.picked span { background: var(--accent); }
+.prompt { margin: 12px 0 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prompt .common { color: var(--faint); }
+.prompt-note { font-size: 13px; color: var(--orange); margin: 8px 0 0; }
+.web { font-size: 12px; font-weight: 500; padding: 2px 9px; border-radius: 980px; white-space: nowrap;
+  background: var(--blue-bg); color: var(--accent); }
+.web.differs { background: var(--orange-bg); color: var(--orange); }
+.web-note { font-size: 13px; line-height: 1.5; margin: 12px 0 0; padding: 10px 14px; border-radius: 12px;
+  background: var(--blue-bg); color: var(--text); }
+.web-note.differs { background: var(--orange-bg); }
+.pill.web-pill { background: var(--blue-bg); color: var(--accent); }
+.pill.web-pill.differs { background: var(--orange-bg); color: var(--orange); }
+.hidden { display: none !important; }
+.nothing { text-align: center; color: var(--muted); padding: 64px 0; }
+
+/* 看大图 */
+.box {
+  position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .86); display: grid; place-items: center;
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); cursor: zoom-out;
+}
+.box img { max-width: 94vw; max-height: 88vh; border-radius: 10px; }
+.box p { position: fixed; bottom: 18px; left: 0; right: 0; text-align: center; color: #f5f5f7; font-size: 14px; margin: 0; }
+
+/* 窄屏：侧栏收成吸顶的两行，第二行是横向滚动的镜头导航 */
+@media (max-width: 1000px) {
+  html { scroll-padding-top: 112px; }
+  .layout { display: block; }
+  .side {
+    height: auto; z-index: 10; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+    gap: 8px 12px; padding: 10px 16px 8px; background: var(--bar); border-bottom: 1px solid var(--line);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  }
+  .crumbs { grid-column: 1 / -1; margin: 0; flex-wrap: nowrap; overflow-x: auto; }
+  .head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  h1 { font-size: 17px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fresh { margin: 0; white-space: nowrap; }
+  .stats { grid-column: 1 / -1; display: flex; gap: 14px; order: 3; }
+  .stat { display: flex; gap: 5px; font-size: 12px; }
+  .meter, .keys { display: none; }
+  .nav { grid-column: 1 / -1; order: 4; display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px; padding: 0 16px 2px; scrollbar-width: none; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a { flex: none; background: var(--fill); border-radius: 980px; padding: 4px 12px 4px 10px; gap: 6px; }
+  .nav a[aria-current="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
+  .nav a .snip { display: none; }
+  main { padding: 16px 16px 72px; }
+  .shot { padding: 20px; border-radius: 18px; }
+  .shot h2 { font-size: 32px; }
+}
+@media (max-width: 640px) {
+  .media { grid-template-columns: 1fr; }
+  .eyebrow { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="crumbs hidden" id="crumbs"></div>
+    <div class="head" id="head"></div>
+    <div class="seg" id="filter">
+      <button data-filter="all" aria-pressed="true">全部</button>
+      <button data-filter="open" aria-pressed="false">未完成</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="keys"><kbd>J</kbd> <kbd>K</kbd> 上下一镜</div>
+  </aside>
+  <main id="shots"></main>
+</div>
+<script id="data" type="application/json">__WRALLY_DATA__</script>
+<script>
+(() => {
+  const VERSION = "__WRALLY_VERSION__";
+  const data = JSON.parse(document.getElementById("data").textContent);
+  const KINDS = [["keyframe", "关键帧"], ["video", "视频"], ["audio", "旁白"]];
+  const PROMPTS = [["image", "图片提示词"], ["anim", "动画提示词"], ["audio", "旁白提示词"]];
+  const SETTLED = ["done", "skipped"];
+
+  // 所有文字都经 textContent 写入，提示词里的任何字符都不会被当成标签
+  function el(tag, attrs, ...children) {
+    const node = document.createElement(tag);
+    for (const [name, value] of Object.entries(attrs || {})) {
+      if (value === null || value === undefined || value === false) continue;
+      if (name === "class") node.className = value;
+      else if (name === "text") node.textContent = value;
+      else if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
+      else node.setAttribute(name, value === true ? "" : value);
+    }
+    for (const child of children.flat()) if (child) node.append(child);
+    return node;
+  }
+
+  const stateOf = (shot, kind) => shot[kind].status.state;
+  const webDiffers = shot => Object.values(shot.prompts).some(p => p && p.web === "differs");
+  const isOpen = shot => webDiffers(shot) || KINDS.some(([kind]) => !SETTLED.includes(stateOf(shot, kind)));
+  function worst(shot) {
+    const states = KINDS.map(([kind]) => stateOf(shot, kind));
+    for (const s of ["failed", "stale", "missing", "running", "pending", "none"]) if (states.includes(s)) return s;
+    return webDiffers(shot) ? "stale" : "done";
+  }
+
+  // 侧栏
+  document.title = [data.name.toUpperCase(), data.title].filter(Boolean).join(" · ");
+  const fresh = el("div", { class: "fresh" });
+  document.getElementById("head").append(
+    el("div", { class: "eyebrow", text: data.name }), el("h1", { text: data.title || data.name }), fresh);
+  document.getElementById("stats").append(...KINDS.map(([kind, label]) => {
+    const wanted = data.shots.filter(s => stateOf(s, kind) !== "skipped");
+    const done = wanted.filter(s => stateOf(s, kind) === "done").length;
+    return el("div", { class: "stat" },
+      el("span", { class: "what", text: label }),
+      el("span", { class: "num" }, String(done), el("small", { text: " / " + wanted.length })),
+      el("div", { class: "meter" }, el("i", { style: `width:${wanted.length ? done / wanted.length * 100 : 0}%` })));
+  }));
+  if (data.index) {
+    const crumbs = document.getElementById("crumbs");
+    crumbs.classList.remove("hidden");
+    crumbs.append(el("a", { class: "back", href: data.index, text: "‹ 全部剧集" }),
+      ...data.episodes.map(name => el("a", { href: `../${encodeURIComponent(name)}/page.html`, text: name,
+        "aria-current": name === data.name ? "page" : null })));
+  }
+  const nav = document.getElementById("nav");
+  const link = (id, dot, label, snip) => el("a", { href: "#" + id, "data-for": id },
+    el("span", { class: "dot " + dot }), el("b", { text: label }), el("span", { class: "snip", text: snip }));
+  if (data.film) nav.append(link("film", "film", "成片", ""));
+  nav.append(...data.shots.map(s => link("s" + s.key, worst(s), s.key, s.narration)));
+
+  // 看大图：group 是同一镜的若干张，左右键切换
+  let box = null;
+  function show(group, index) {
+    close();
+    const item = group[index];
+    box = el("div", { class: "box", onclick: close }, el("img", { src: item.src }), el("p", { text: item.caption }));
+    box.step = d => show(group, (index + d + group.length) % group.length);
+    document.body.append(box);
+  }
+  function close() { if (box) { box.remove(); box = null; } }
+
+  function promptBlock(shot, kind, label) {
+    const p = shot.prompts[kind];
+    if (!p) return null;
+    const full = p.before + p.own + p.after;
+    const copy = el("button", { class: "copy", text: "复制全文", onclick: e => {
+      e.preventDefault();
+      navigator.clipboard && navigator.clipboard.writeText(full).then(() => {
+        copy.textContent = "已复制";
+        setTimeout(() => { copy.textContent = "复制全文"; }, 1500);
+      });
+    } });
+    const hint = p.raw ? "整段自己写" : (p.before || p.after ? "灰色是公共文本" : "");
+    // 在网页上编辑过的提示词：远端另存着一份副本，生成用的是它，push 改不到它
+    const what = kind === "image" ? "生图" : "生视频";
+    const web = p.web && el("span", { class: "web " + p.web, text: p.web === "differs" ? "网页副本不同" : "需在网页上改" });
+    const webNote = p.web && el("p", { class: "web-note " + p.web, text: p.web === "differs"
+      ? `这一镜的${label}在 WorkRally 网页上编辑过，网页另存的那份和这里不一样。${what}用的是网页那份，push 改不到它：` +
+        "请先刷新网页，再把这里的全文粘贴进去保存。改好之前，对应的生成命令会报 stale_web_prompt 中止。"
+      : `这一镜的${label}在 WorkRally 网页上编辑过，网页另存着一份副本（目前和这里一致）。${what}用的是那份，push 改不到它：` +
+        "以后改这段提示词，除了 push，还要到网页上粘贴成同样的文字。" });
+    return el("details", { id: `d-${shot.key}-${kind}` },
+      el("summary", null, label, web, el("small", { text: hint }), copy),
+      webNote,
+      el("p", { class: "prompt" },
+        p.before && el("span", { class: "common", text: p.before }),
+        el("span", { text: p.own }),
+        p.after && el("span", { class: "common", text: p.after })),
+      p.note && el("p", { class: "prompt-note", text: "拼接失败：" + p.note }));
+  }
+
+  // 卡片顶上的提醒：这一镜有提示词要到网页上改。两份不一致的排在前面说
+  function webPill(shot) {
+    const kinds = PROMPTS.filter(([kind]) => shot.prompts[kind] && shot.prompts[kind].web);
+    if (!kinds.length) return null;
+    const differs = kinds.filter(([kind]) => shot.prompts[kind].web === "differs");
+    const names = (differs.length ? differs : kinds).map(([, label]) => label.replace("提示词", "")).join("、");
+    return el("span", { class: "pill web-pill" + (differs.length ? " differs" : ""),
+      text: differs.length ? `网页副本不同 · ${names}` : `网页上改过 · ${names}` });
+  }
+
+  function card(shot) {
+    const kf = shot.keyframe;
+    const shown = kf.candidates.filter(c => c.src);
+    const group = shown.map(c => ({ src: c.src, caption: `${shot.key} · 候选 ${c.label}${c.picked ? " · 选用" : ""}` }));
+    const picked = shown.findIndex(c => c.picked);
+    const zoom = () => picked >= 0 ? show(group, picked) : show([{ src: kf.src, caption: shot.key + " · 选用关键帧" }], 0);
+    const cands = el("details", { id: `d-${shot.key}-cands` },
+      el("summary", null, "候选关键帧", el("small", { text: `${kf.candidates.length} 张` })),
+      el("div", { class: "cands" }, kf.candidates.map(c => {
+        const at = shown.indexOf(c);
+        return el("div", { class: "cand" + (c.picked ? " picked" : "") },
+          // 展开时才把 data-src 换成 src，默认不加载候选原图
+          c.src ? el("img", { "data-src": c.src, alt: "", onclick: () => show(group, at) }) : "未下载",
+          el("span", { text: c.label }));
+      })));
+    cands.addEventListener("toggle", () => {
+      if (cands.open) for (const img of cands.querySelectorAll("img[data-src]")) {
+        img.src = img.dataset.src;
+        img.removeAttribute("data-src");
+      }
+    });
+    return el("section", { class: "shot", id: "s" + shot.key, "data-open": isOpen(shot) ? "1" : "0" },
+      el("header", null,
+        el("h2", { text: shot.key }),
+        el("div", { class: "pills" }, webPill(shot), KINDS.map(([kind, label]) => {
+          const st = shot[kind].status;
+          return el("span", { class: "pill " + st.state, title: st.note || null, text: `${label} · ${st.label}` });
+        }))),
+      el("p", { class: "line" + (shot.narration ? "" : " none"), text: shot.narration || "这一镜还没有台词" }),
+      el("div", { class: "media" },
+        el("figure", null,
+          el("div", { class: "frame" },
+            kf.src ? el("img", { src: kf.src, alt: "", loading: "lazy", onclick: zoom }) : kf.status.label),
+          el("figcaption", null, el("b", { text: "关键帧" }),
+            kf.pick ? `选用 ${kf.pick} / 共 ${kf.candidates.length} 张` : kf.status.label)),
+        el("figure", null,
+          el("div", { class: "frame" }, shot.video.src
+            // 没有关键帧当封面时取视频首帧，否则是一块黑
+            ? el("video", { src: shot.video.src, poster: kf.src, controls: true, playsinline: true,
+              preload: kf.src ? "none" : "metadata" })
+            : shot.video.status.label),
+          el("figcaption", null, el("b", { text: "视频" }), shot.video.status.note || shot.video.status.label))),
+      el("div", { class: "voice" },
+        el("span", { class: "tag", text: "旁白" }),
+        shot.audio.src ? el("audio", { src: shot.audio.src, controls: true, preload: "none" })
+          : el("span", { class: "empty", text: shot.audio.status.label }),
+        shot.audio.f0 !== null && el("span", { class: "tag", text: `音高 ${shot.audio.f0} Hz` }),
+        shot.audio.status.note && el("span", { class: "tag", text: shot.audio.status.note })),
+      kf.candidates.length ? cands : null,
+      PROMPTS.map(([kind, label]) => promptBlock(shot, kind, label)));
+  }
+
+  const main = document.getElementById("shots");
+  if (data.note) main.append(el("p", { class: "warn", text: "公共文本读取失败：" + data.note }));
+  if (data.film) main.append(el("section", { class: "shot film", id: "film", "data-open": "1" },
+    el("header", null, el("h2", { text: "成片" })),
+    el("div", { class: "frame" }, el("video", { src: data.film, controls: true, preload: "metadata", playsinline: true })),
+    el("p", { text: "改过素材后要重新合成，这里才会更新。" })));
+  main.append(...data.shots.map(card));
+  const nothing = el("p", { class: "nothing hidden", text: "全部镜头都已完成。" });
+  main.append(nothing);
+  const sections = [...main.querySelectorAll(".shot")];
+  const visible = () => sections.filter(s => !s.classList.contains("hidden"));
+
+  // 一次只响一个：开始播放时停掉其他的
+  document.addEventListener("play", e => {
+    for (const m of document.querySelectorAll("video, audio")) if (m !== e.target) m.pause();
+  }, true);
+
+  // 侧栏高亮当前镜头：取视口上部那条线压着的卡片
+  const links = new Map([...nav.querySelectorAll("a")].map(a => [a.dataset.for, a]));
+  let currentId = null;
+  function setCurrent(id) {
+    if (id === currentId) return;
+    currentId = id;
+    for (const [key, a] of links) a.setAttribute("aria-current", String(key === id));
+    const a = links.get(id);
+    if (a) a.scrollIntoView({ block: "nearest", inline: "center" });
+  }
+  function spy() {
+    const shown = visible();
+    if (!shown.length) return;
+    const probe = Math.max(140, window.innerHeight * .3);
+    const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+    const hit = atEnd ? shown[shown.length - 1]
+      : shown.filter(s => s.getBoundingClientRect().top <= probe).pop() || shown[0];
+    setCurrent(hit.id);
+  }
+  let queued = false;
+  window.addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; spy(); });
+  }, { passive: true });
+  window.addEventListener("resize", spy);
+
+  // 键盘：J / K 上下一镜；看大图时 Esc 关闭、左右切换
+  document.addEventListener("keydown", e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (box) {
+      if (e.key === "Escape") close();
+      else if (e.key === "ArrowRight") box.step(1);
+      else if (e.key === "ArrowLeft") box.step(-1);
+      return;
+    }
+    const step = { j: 1, k: -1 }[e.key.toLowerCase()];
+    if (!step) return;
+    const shown = visible();
+    const next = shown[Math.min(shown.length - 1, Math.max(0, shown.findIndex(s => s.id === currentId) + step))];
+    if (next) next.scrollIntoView();
+  });
+
+  // 筛选：卡片和侧栏的条目一起收
+  const filterButtons = [...document.querySelectorAll("#filter button")];
+  const current = { filter: "all" };
+  function applyFilter(which) {
+    let count = 0;
+    for (const section of sections) {
+      const hide = which === "open" && section.dataset.open === "0";
+      section.classList.toggle("hidden", hide);
+      links.get(section.id).classList.toggle("hidden", hide);
+      count += !hide && section.id !== "film";
+    }
+    nothing.classList.toggle("hidden", count > 0);
+    for (const b of filterButtons) b.setAttribute("aria-pressed", String(b.dataset.filter === which));
+    current.filter = which;
+    spy();
+  }
+  for (const b of filterButtons) b.addEventListener("click", () => applyFilter(b.dataset.filter));
+
+  // 刷新前后保持筛选、展开的段落和滚动位置
+  const STORE = "wrally-page:" + location.pathname;
+  function remember() {
+    try {
+      sessionStorage.setItem(STORE, JSON.stringify({
+        filter: current.filter, y: window.scrollY,
+        open: [...document.querySelectorAll("details[open]")].map(d => d.id),
+      }));
+    } catch (e) { /* 浏览器不给用就算了 */ }
+  }
+  function restore() {
+    let saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(STORE) || "null"); } catch (e) { /* 同上 */ }
+    applyFilter(saved && saved.filter === "open" ? "open" : "all");
+    if (!saved) return;
+    for (const id of saved.open || []) {
+      const d = document.getElementById(id);
+      if (d) d.open = true;
+    }
+    if (!location.hash) requestAnimationFrame(() => { window.scrollTo({ top: saved.y || 0, behavior: "instant" }); spy(); });
+  }
+  window.addEventListener("pagehide", remember);
+  restore();
+
+  // 发现更新：file:// 下不能 fetch，所以定时用 script 标签加载版本文件，它会调用 __wrallyPage
+  const stamp = new Date(document.lastModified);
+  if (!isNaN(stamp)) fresh.textContent = "更新于 " + stamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  let offered = false;
+  const busy = () => box || [...document.querySelectorAll("video, audio")].some(m => !m.paused && !m.ended);
+  window.__wrallyPage = version => {
+    if (version === VERSION) return;
+    if (!busy()) { location.reload(); return; }
+    if (offered) return;
+    offered = true;  // 正在播放或看大图时不打断，等人来点
+    fresh.replaceChildren(el("button", { text: "有更新 · 点击刷新", onclick: () => location.reload() }));
+  };
+  setInterval(() => {
+    const probe = el("script", { src: ".wrally/page.version.js?t=" + Date.now() });
+    probe.onload = probe.onerror = () => probe.remove();
+    document.head.append(probe);
+  }, 3000);
+})();
+</script>
+</body>
+</html>

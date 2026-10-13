@@ -1,0 +1,46 @@
+[project]
+name = "wrally-cli"
+version = "0.1.0"
+description = "WorkRally 批量命令行工具（命令 wrally）：把一集短视频的批量操作收进脚本"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12",
+    "mcp>=1.12",
+    "pydantic>=2.7",
+    "httpx2>=2.13",
+    "ruamel.yaml>=0.18",
+    "filelock>=3.13",
+    "pillow>=12.3.0",
+]
+
+[project.optional-dependencies]
+pitch = ["librosa>=0.11.0"]  # check 量旁白音高用；没装时跳过这一项
+
+[project.scripts]
+wrally = "wrally.cli:app"
+
+[dependency-groups]
+dev = [
+    "anyio>=4.15.1",
+    "librosa>=0.11.0",  # 和 pitch 同一项：开发环境里装着，设了 rules.f0_max 的项目 check 时要用
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wrally"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+anyio_mode = "auto"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
