@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wrally</title>
+<style>
+:root {
+  --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --faint: #86868b;
+  --fill: rgba(0, 0, 0, .05); --accent: #0071e3;
+  --green: #1d8a3c; --orange: #b25000; --gray: #6e6e73;
+  --green-bg: rgba(52, 199, 89, .16); --orange-bg: rgba(255, 149, 0, .16); --gray-bg: rgba(0, 0, 0, .06);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .04);
+  --lift: 0 2px 4px rgba(0, 0, 0, .05), 0 18px 40px rgba(0, 0, 0, .1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --card: #1d1d1f; --text: #f5f5f7; --muted: #a1a1a6; --faint: #86868b;
+    --fill: rgba(255, 255, 255, .08); --accent: #2997ff;
+    --green: #30d158; --orange: #ff9f0a; --gray: #a1a1a6;
+    --gray-bg: rgba(255, 255, 255, .1); --shadow: none; --lift: 0 0 0 1px rgba(255, 255, 255, .16);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 17px/1.47 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  letter-spacing: -.01em; -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 22px 96px; }
+.hero { padding: 80px 0 44px; text-align: center; }
+.eyebrow { font-size: 15px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+h1 {
+  margin: 6px 0 0; font: 600 56px/1.07 -apple-system, "SF Pro Display", "PingFang SC", sans-serif;
+  letter-spacing: -.02em; overflow-wrap: anywhere;
+}
+.lede { margin: 14px 0 0; font-size: 19px; color: var(--muted); }
+.fresh { margin-top: 10px; font-size: 12px; color: var(--faint); min-height: 18px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+.ep {
+  display: flex; flex-direction: column; background: var(--card); border-radius: 22px; overflow: hidden;
+  text-decoration: none; color: inherit; box-shadow: var(--shadow);
+  transition: transform .3s ease, box-shadow .3s ease;
+}
+.ep:hover { transform: translateY(-3px); box-shadow: var(--lift); }
+.cover { aspect-ratio: 16 / 9; background: var(--fill); display: grid; place-items: center; color: var(--faint); font-size: 14px; }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.body { padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.name { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+h2 { margin: 2px 0 0; font: 600 24px/1.17 -apple-system, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -.01em; }
+.stats { display: grid; gap: 9px; }
+.stat { display: grid; grid-template-columns: 1fr auto; align-items: baseline; row-gap: 5px; font-size: 13px; }
+.stat .what { color: var(--muted); }
+.stat .num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat .num small { font-size: inherit; font-weight: 400; color: var(--faint); }
+.meter { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--fill); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+.pill {
+  font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 980px; white-space: nowrap;
+  background: var(--gray-bg); color: var(--gray);
+}
+.pill.done { background: var(--green-bg); color: var(--green); }
+.pill.warn { background: var(--orange-bg); color: var(--orange); }
+.none { text-align: center; color: var(--muted); padding: 48px 0; }
+@media (max-width: 734px) {
+  h1 { font-size: 40px; }
+  .hero { padding: 48px 0 32px; }
+  .grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="hero" id="hero"></section>
+  <div class="grid" id="grid"></div>
+</div>
+<script id="data" type="application/json">__WRALLY_DATA__</script>
+<script>
+(() => {
+  const VERSION = "__WRALLY_VERSION__";
+  const data = JSON.parse(document.getElementById("data").textContent);
+  const KINDS = [["keyframe", "关键帧"], ["video", "视频"], ["audio", "旁白"]];
+
+  // 所有文字都经 textContent 写入
+  function el(tag, attrs, ...children) {
+    const node = document.createElement(tag);
+    for (const [name, value] of Object.entries(attrs || {})) {
+      if (value === null || value === undefined || value === false) continue;
+      if (name === "class") node.className = value;
+      else if (name === "text") node.textContent = value;
+      else node.setAttribute(name, value === true ? "" : value);
+    }
+    for (const child of children.flat()) if (child) node.append(child);
+    return node;
+  }
+
+  document.title = data.title;
+  const shots = data.episodes.reduce((n, ep) => n + ep.shots, 0);
+  const films = data.episodes.filter(ep => ep.film).length;
+  const fresh = el("div", { class: "fresh" });
+  document.getElementById("hero").append(
+    el("div", { class: "eyebrow", text: "制作进度" }),
+    el("h1", { text: data.title }),
+    el("p", { class: "lede", text: `${data.episodes.length} 集 · ${shots} 镜 · ${films} 集已合成` }),
+    fresh);
+
+  const grid = document.getElementById("grid");
+  if (!data.episodes.length) grid.replaceWith(el("p", { class: "none", text: "这个项目下还没有剧集。" }));
+  grid.append(...data.episodes.map(ep => el("a", { class: "ep", href: ep.href },
+    el("div", { class: "cover" }, ep.cover ? el("img", { src: ep.cover, alt: "", loading: "lazy" }) : "还没有关键帧"),
+    el("div", { class: "body" },
+      el("div", null, el("div", { class: "name", text: ep.name }), el("h2", { text: ep.title || ep.name })),
+      el("div", { class: "stats" }, KINDS.map(([kind, label]) => {
+        const [done, wanted] = ep.stats[kind];
+        return el("div", { class: "stat" },
+          el("span", { class: "what", text: label }),
+          el("span", { class: "num" }, String(done), el("small", { text: " / " + wanted })),
+          el("div", { class: "meter" }, el("i", { style: `width:${wanted ? done / wanted * 100 : 0}%` })));
+      })),
+      el("div", { class: "pills" },
+        el("span", { class: "pill", text: `${ep.shots} 镜` }),
+        ep.open ? el("span", { class: "pill warn", text: `${ep.open} 镜未完成` }) : el("span", { class: "pill done", text: "素材齐了" }),
+        ep.web_differs ? el("span", { class: "pill warn", text: `${ep.web_differs} 镜网页副本不同` }) : null,
+        ep.film ? el("span", { class: "pill done", text: "已合成" }) : el("span", { class: "pill", text: "未合成" }))))));
+
+  // 发现更新：和单集页面同一个办法，定时用 script 标签加载版本文件
+  const stamp = new Date(document.lastModified);
+  if (!isNaN(stamp)) fresh.textContent = "更新于 " + stamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  window.__wrallyPage = version => { if (version !== VERSION) location.reload(); };
+  setInterval(() => {
+    const probe = el("script", { src: ".wrally/index.version.js?t=" + Date.now() });
+    probe.onload = probe.onerror = () => probe.remove();
+    document.head.append(probe);
+  }, 3000);
+})();
+</script>
+</body>
+</html>
