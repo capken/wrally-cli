@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 明确不做：通用 WorkRally SDK；替人选图；剪辑合成（wrally 不调用合成脚本、不解析它的输出，只用 `wrally export` 写一份中性的 `.wrally/export.json`）。
 
-`WorkRally 批量命令行工具（wrally）设计文档.md` 是规格，描述的是**现在的实际行为**：清单字段、每条命令的调用顺序、规则与坑、待确认问题都在里面。改行为时同步更新它。`refactor.md` 是从旧仓库 `capken/wrally` 拆出来的计划和记录（第 1–3 步已完成，第 4 步是装成全局工具并实测）。
+`WorkRally 批量命令行工具（wrally）设计文档.md` 是规格，描述的是**现在的实际行为**：清单字段、每条命令的调用顺序、规则与坑、待确认问题都在里面。改行为时同步更新它。`refactor.md` 是从旧仓库 `capken/wrally` 拆出来的计划和记录（四步都已完成，旧仓库和旧目录还没舍弃）。
 
 ## 仓库里有什么
 
@@ -37,7 +37,7 @@ uv run wrally page -C <项目目录>                 # 重建各集页面和总�
 uv run wrally export -C <单集目录>               # 写 .wrally/export.json，给合成脚本用
 ```
 
-在别的目录（比如创作项目）里用这份源码：`uv run --project /Users/allenzheng/codes/wrally-cli wrally …`。
+本机已把这份源码装成全局命令 `wrally`（`uv tool install --editable …[pitch]`，2026-10-13），在创作项目里直接敲 `wrally`，源码改了立即生效；改了依赖要重装，命令在 `refactor.md` 第 4 步。这台机器有时解析不了 `pypi.org`，`uv` 要下载而连不上时加 `--default-index https://pypi.tuna.tsinghua.edu.cn/simple`（清华镜像，用户同意过），或在缓存够用时加 `--offline`。
 
 环境变量：`WRALLY_CONFIG_DIR`（凭证目录）、`WRALLY_MCP_URL`（MCP 地址）、`WRALLY_CONCURRENCY`（查询和下载的并发数，默认 4）。
 
@@ -143,7 +143,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `web_copies.json`：四集现有的记录是用 `.wrally/raw/` 里最近一次场次列表补出来的，没有经过真实的 `pull`；`pull`、`push`、生成命令写它只有单元测试。
 - `page`：开着的页面自动刷新（定时加载 `.wrally/page.version.js`）、侧栏随滚动高亮、`J`/`K` 跳镜和 `--watch` 没有在真实浏览器里实测；深色模式和窄屏只用无界面 Chrome 看过一眼。
 - `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
-- 项目文件、`rules`、`export` 和这次拆分之后，**还没跑过任何调用远端的命令**；离线的 `status`、`lint`、`check`、`page`、`export` 在四集上逐一对比过。`refactor.md` 第 4 步的 `wrally pull` 零改动是第一次真实验证。
+- 项目文件、`rules`、`export` 和这次拆分之后，调用远端的命令只跑过 `pull`（2026-10-13，四集零改动）；`push` 和三个生成命令还没跑过。离线的 `status`、`lint`、`check`、`page`、`export` 在四集上逐一对比过。
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。
 - 通用化的后续待办（通用模板、多音色等）在设计文档「后续待办：通用化」；视频超分在 `refactor.md` 末尾。
 - 没有做：用语音识别核对旁白与台词；指定使用非最新的那条结果。
