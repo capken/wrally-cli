@@ -17,3 +17,7 @@ __pycache__/
 
 # 进度网页（含提示词全文）
 page.html
+
+# 设计文档和拆分记录暂时只留在本地，不进仓库
+refactor.md
+WorkRally 批量命令行工具（wrally）设计文档.md
