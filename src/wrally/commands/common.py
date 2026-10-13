@@ -9,7 +9,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from wrally.config import concurrency
 from wrally.errors import AuthError, PreflightError, WrallyError
-from wrally.workspace import Workspace, write_if_changed
+from wrally.workspace import PROJECT, Workspace, write_if_changed
 
 T = TypeVar("T")
 
@@ -17,6 +17,9 @@ T = TypeVar("T")
 def load_manifest(ws: Workspace) -> CommentedMap:
     data = ws.load()
     if data is None or not data.get("shots"):
+        if data is None and (ws.root / PROJECT).is_file():
+            # 人在项目目录里：这里放的是各集共用的设置，命令要在某一集的目录下跑
+            raise PreflightError("no_manifest", "(this is a project directory: use -C <episode>)")
         raise PreflightError("no_manifest", "(run: wrally pull)")
     return data
 
