@@ -184,12 +184,14 @@ def new(
             ws, c, shots, project_id=project, name=name, series_id=series, title=title, dry_run=dry_run
         ),
     )
-    notes = ()
-    if report.added and not dry_run:
-        notes = (
-            "note: new shots carry placeholder prompts; edit prompts/, `wrally lint`, then `wrally push`",
+    notes = []
+    if report.placeholders:
+        notes.append(
+            "note: new shots carry placeholder prompts; edit prompts/, `wrally lint`, then `wrally push`"
         )
-    _emit(report.summary, new_cmd.HEADERS, report.rows, as_json, details="episode.yaml", notes=notes)
+    if report.kept_local:
+        notes.append("note: local prompts were kept over the placeholders; `wrally lint`, then `wrally push`")
+    _emit(report.summary, new_cmd.HEADERS, report.rows, as_json, details="episode.yaml", notes=tuple(notes))
 
 
 @app.command()

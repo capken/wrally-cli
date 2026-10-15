@@ -131,3 +131,80 @@ def test_placeholder_prompts_fail_lint_until_replaced(ws, remote):
     ws.write_text("prompts/01.image.md", "一座钟楼\n")
     ws.write_text("prompts/01.anim.md", "钟轻轻摆动\n")
     assert lint(ws).errors == 0
+
+
+HANDWRITTEN = """\
+title: 我思故我在
+defaults:
+  style_suffix: styles/suffix.md
+shots:
+- key: "00"
+  image_prompt: prompts/00.image.md
+  anim_prompt: prompts/00.anim.md
+  narration: 片头台词
+  raw: [image, anim]
+- key: "01"
+  image_prompt: prompts/01.image.md
+  anim_prompt: prompts/01.anim.md
+  narration: 第一句
+  skip: true
+- key: "99"
+  image_prompt: prompts/99.image.md
+  anim_prompt: prompts/99.anim.md
+  narration: 片尾台词
+  raw: [image, anim]
+"""
+
+
+def handwrite(ws):
+    """先手写清单和提示词、还没有 story_id 和 series_id（EP5 的做法）。"""
+    ws.manifest_path.write_text(HANDWRITTEN, encoding="utf-8")
+    ws.write_text("styles/suffix.md", "水彩画风。\n")
+    texts = {}
+    for key in ("00", "01", "99"):
+        for kind in ("image", "anim"):
+            texts[f"{key}.{kind}"] = f"手写的 {key} {kind}\n"
+            ws.write_text(f"prompts/{key}.{kind}.md", texts[f"{key}.{kind}"])
+    return texts
+
+
+def test_new_claims_handwritten_entries_and_keeps_prompts(ws, remote):
+    texts = handwrite(ws)
+    report = run(ws, remote, "00-01,99", name="EP5 我思故我在", title="我思故我在")
+    data = ws.load()
+    assert [s["key"] for s in data["shots"]] == ["00", "01", "99"]
+    assert [s["story_id"] for s in data["shots"]] == ["new1", "new2", "new3"]
+    assert list(data["shots"][0])[:2] == ["key", "story_id"]
+    assert list(data["shots"][0]["raw"]) == ["image", "anim"] and "raw" not in data["shots"][1]
+    assert data["shots"][1]["skip"] is True and data["shots"][2]["narration"] == "片尾台词"
+    for name, text in texts.items():
+        key, kind = name.split(".")
+        assert ws.read_text(f"prompts/{key}.{kind}.md") == text
+    # image、anim 各 3 条，加上还没写到远端的 3 条台词
+    assert (report.added, report.placeholders, report.kept_local) == (3, 0, 9)
+    assert data["series_id"] == "ser1" and data["title"] == "我思故我在"
+    before = ws.manifest_path.read_bytes()
+    run(ws, remote, "00-01,99")
+    assert ws.manifest_path.read_bytes() == before and remote.actions() == ["add"]
+
+
+def test_new_refuses_duplicate_keys_before_touching_remote(ws, remote):
+    handwrite(ws)
+    data = ws.load()
+    data["shots"].append(type(data["shots"][0])(key="01", story_id="old"))
+    ws.save(data)
+    with pytest.raises(PreflightError) as e:
+        run(ws, remote, "00-01,99", name="EP5")
+    assert e.value.code == "duplicate_shot_key"
+    assert remote.count("series_create") == 0 and remote.actions() == []
+
+
+def test_new_refuses_a_key_owned_by_another_story(ws, remote):
+    handwrite(ws)
+    data = ws.load()
+    data["shots"][1]["story_id"] = "gone"
+    ws.save(data)
+    with pytest.raises(PreflightError) as e:
+        run(ws, remote, "00-01,99", name="EP5")
+    assert e.value.code == "duplicate_shot_key" and "01" in e.value.hint
+    assert remote.count("series_create") == 0

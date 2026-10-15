@@ -2,6 +2,7 @@
 
 可以重跑：清单里已有 series_id 就不再建剧集，只补远端还没有的场次。所以它也用来给已有的一集加镜头。
 新场次的关键帧和动画提示词都是占位文本（服务端不接受空场次），建完后按 pull 的规则写入清单和 prompts/。
+清单里可以先手写好条目和提示词再跑 new：没有 story_id 的条目按镜号认领，本地提示词保留，之后 push。
 """
 
 from dataclasses import dataclass, field
@@ -11,7 +12,7 @@ from wrally.api.series import series_create, series_list
 from wrally.api.shots import add_shots, shot_list
 from wrally.commands import pull as pull_cmd
 from wrally.errors import PreflightError, ToolError
-from wrally.prompts import PLACEHOLDER
+from wrally.prompts import FILE_FIELD, PLACEHOLDER
 from wrally.transport.client import McpClient
 from wrally.workspace import Workspace
 
@@ -26,6 +27,8 @@ class NewReport:
     series_state: str = "exists"  # created / exists / would create
     rows: list[tuple[str, ...]] = field(default_factory=list)
     dry_run: bool = False
+    placeholders: int = 0  # 本地还是占位文本的提示词
+    kept_local: int = 0  # 本地已写好、和远端不同的提示词（待 push）
 
     @property
     def added(self) -> int:
@@ -39,6 +42,28 @@ class NewReport:
             f"series {self.series_id or '-'} ({self.series_state}); "
             f"{verb} {self.added} shots, {len(self.rows) - self.added} already there{tail}"
         )
+
+
+def _check_taken(data: dict, missing: list[str]) -> None:
+    """建场次前查清单，免得建完了 merge 才报错：要建的镜号不能已被清单里别的场次占着。"""
+    entries = data.get("shots") or []
+    taken = [str(e["key"]) for e in entries if e.get("story_id") and str(e.get("key")) in missing]
+    if taken:
+        raise PreflightError(
+            "duplicate_shot_key", f"({','.join(taken)} already has a story_id in episode.yaml)"
+        )
+
+
+def _placeholders(ws: Workspace, keys: list[str]) -> int:
+    data = ws.load() or {}
+    count = 0
+    for entry in data.get("shots") or []:
+        if str(entry.get("key")) not in keys:
+            continue
+        for kind in ("image", "anim"):
+            rel = entry.get(FILE_FIELD[kind])
+            count += bool(rel) and (ws.read_text(str(rel)) or "").strip() == PLACEHOLDER
+    return count
 
 
 def expand_keys(spec: str) -> list[str]:
@@ -75,12 +100,15 @@ async def new(
     if not project_id:
         raise PreflightError("missing_project", "(new needs --project, or project_id in wrally.yaml)")
     keys = expand_keys(spec)
+    pull_cmd.check_manifest_keys(data.get("shots") or [])
     report = NewReport(series_id=series_id, dry_run=dry_run)
 
     existing = []
     if series_id:
         existing = await shot_list(client, series_id, project_id, raw_dir=ws.raw_dir, label="new")
+        _check_taken(data, [k for k in keys if k not in {s.key for s in existing}])
     else:
+        _check_taken(data, keys)
         if not name:
             raise PreflightError("missing_name", "(new series needs --name)")
         # 同名剧集多半是上次建到一半留下的，不替人决定是否沿用
@@ -126,7 +154,9 @@ async def new(
             raw_path=ws.raw_dir / "new-add.json",
         )
         shots = await shot_list(client, series_id, project_id, raw_dir=ws.raw_dir, label="new")
-        pull_cmd.merge(ws, shots, project_id=project_id, series_id=series_id, title=title)
+        merged = pull_cmd.merge(ws, shots, project_id=project_id, series_id=series_id, title=title)
+        report.kept_local = merged.kept_local
+        report.placeholders = _placeholders(ws, missing)
         lost = [k for k in missing if k not in {s.key for s in shots}]
         if lost:
             raise ToolError("shots_not_created", tool="shotlist_manage", raw_path=ws.raw_dir / "new-add.json")

@@ -126,3 +126,72 @@ def test_web_copy_of_the_anim_prompt_is_flagged_separately(ws, stories):
     assert notes["01"].endswith("web anim copy differs") and "web copy differs" not in notes["01"]
     assert "copy differs" not in notes["02"]
     assert any("web anim copy differs" in n and "video generation" in n for n in report.notes)
+
+
+HANDWRITTEN = """\
+shots:
+- key: "00"
+  story_id:
+  image_prompt: prompts/00.image.md
+  anim_prompt: prompts/00.anim.md
+  narration: 片头台词
+  raw: [image, anim]
+- key: "01"
+  image_prompt: prompts/01.image.md
+  anim_prompt: prompts/01.anim.md
+  skip: true
+"""
+
+
+def handwrite(ws):
+    ws.manifest_path.write_text(HANDWRITTEN, encoding="utf-8")
+    for key in ("00", "01"):
+        for kind in ("image", "anim"):
+            ws.write_text(f"prompts/{key}.{kind}.md", f"手写的 {key} {kind}\n")
+
+
+def test_pull_claims_handwritten_entries_without_story_id(ws, shots):
+    handwrite(ws)
+    report = merge(ws, shots, **IDS)
+    data = ws.load()
+    assert [(s["key"], s.get("story_id")) for s in data["shots"]] == [
+        ("00", "s00"), ("01", "s01"), ("02", "s02"), ("99", "s99"),
+    ]  # fmt: skip
+    assert list(data["shots"][0]["raw"]) == ["image", "anim"] and data["shots"][1]["skip"] is True
+    assert data["shots"][0]["narration"] == "片头台词"
+    assert ws.read_text("prompts/00.image.md") == "手写的 00 image\n"
+    assert ws.read_text("prompts/01.anim.md") == "手写的 01 anim\n"
+    notes = {r.shot: r.note for r in report.rows}
+    assert notes["00"] == "claimed" and notes["02"] == "new shot"
+    assert report.new_shots == 2
+    row = next(r for r in report.rows if r.shot == "01")
+    assert (row.image, row.anim) == ("local", "local")
+
+
+def test_placeholder_never_overwrites_local_prompt(ws, shots):
+    handwrite(ws)
+    placeholder = [
+        s.model_copy(update={"image_prompt": "（待写）", "animation_prompt": "（待写）"}) for s in shots
+    ]
+    merge(ws, placeholder, force=True, **IDS)
+    assert ws.read_text("prompts/00.image.md") == "手写的 00 image\n"
+    assert ws.read_text("prompts/01.anim.md") == "手写的 01 anim\n"
+    assert ws.read_text("prompts/02.image.md") == "（待写）\n"  # 本地没有的照常建
+
+
+def test_unreferenced_prompt_file_is_not_overwritten(ws, shots):
+    ws.write_text("prompts/02.image.md", "手写的 02\n")  # 清单里还没有 02
+    report = merge(ws, shots, **IDS)
+    assert ws.read_text("prompts/02.image.md") == "手写的 02\n"
+    assert next(r for r in report.rows if r.shot == "02").image == "local"
+    assert ws.load()["shots"][2]["image_prompt"] == "prompts/02.image.md"
+
+
+def test_duplicate_keys_in_manifest_are_rejected(ws, shots):
+    handwrite(ws)
+    text = ws.manifest_path.read_text(encoding="utf-8")
+    ws.manifest_path.write_text(text + '- key: "00"\n  story_id: s00\n', encoding="utf-8")
+    with pytest.raises(PreflightError) as e:
+        merge(ws, shots, **IDS)
+    assert e.value.code == "duplicate_shot_key" and "00" in e.value.hint
+    assert ws.read_text("prompts/00.image.md") == "手写的 00 image\n"
