@@ -270,6 +270,28 @@ async def test_per_shot_duration_overrides_the_default_and_counts_as_an_input(re
     assert entry(ws, "02")["video"]["made_from"] != before
 
 
+async def test_per_shot_resolution_overrides_the_default_and_counts_as_an_input(ready):
+    """《提灯人》EP3 的 10 镜三联画细节密：只给这一镜 720p，其他镜头的指纹不受影响。"""
+    ws, remote = ready
+    await run(ws, remote)
+    before = entry(ws, "02")["video"]["made_from"]
+    remote.finish("s02", "v1")
+    edit(ws, "02", video=entry(ws, "02")["video"] | {"status": "done"})
+    edit(ws, "02", video_resolution=3)
+    report = await run(ws, remote)
+    assert report.submitted == ["02"] and video_config(remote)["resolution"] == 3
+    assert entry(ws, "02")["video"]["made_from"] != before
+
+
+@pytest.mark.parametrize("bad", [0, -1, "3", 1.5, True])
+async def test_bad_per_shot_resolution_stops_before_any_remote_call(ready, bad):
+    ws, remote = ready
+    edit(ws, "02", video_resolution=bad)
+    with pytest.raises(PreflightError) as e:
+        await run(ws, remote)
+    assert e.value.code == "bad_video_resolution" and remote.calls == []
+
+
 @pytest.mark.parametrize("bad", [0, -5, "10", 8.5, True])
 async def test_bad_per_shot_duration_stops_before_any_remote_call(ready, bad):
     ws, remote = ready

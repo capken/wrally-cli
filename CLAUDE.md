@@ -119,7 +119,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 幂等靠清单里的 `made_from`（输入指纹）。提交前先把状态落盘为 `submitting` 并记下 `results_before`、`failed_before`；`wait` 也靠这组基线判断，避免把旧结果当成新任务的结果。
 - `keyframe gen`、`video gen` 要求提示词已经 `push`；`audio gen` 自己写旁白提示词。
 - `video gen` 用 `keyframe.synced`（wrally 上次写进远端的选用图）判断网页上是否被人改过。
-- 单镜要换视频时长就在清单里给这一镜写 `video_duration`，不要改 `defaults.video.duration`：时长计入每镜的输入指纹，改默认值会让整集的视频都被判为输入变了。指纹一律经 `video.shot_settings` 取参数。
+- 单镜要换视频时长就在清单里给这一镜写 `video_duration`，要换分辨率就写 `video_resolution`（Seedance-2.0 Mini：1 是 480p、3 是 720p），不要改 `defaults.video` 里的对应值：它们计入每镜的输入指纹，改默认值会让整集的视频都被判为输入变了。指纹一律经 `video.shot_settings` 取参数。
 
 **远端不可靠的地方**
 
@@ -140,6 +140,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 富文本副本的三处检查（`web copy differs`、`push` 的提示、`stale_web_prompt`）只有单元测试；真实只确认了两份一致时不误报。动画副本的三处检查同样只有单元测试。
 - 每镜视频时长 `video_duration` 除单元测试外只真实用过一镜。
 - `McpClient` 的断线重连没有测试。
+- 每镜视频分辨率 `video_resolution`（2026-10-20 加）只有单元测试。
 - `web_copies.json`：四集现有的记录是用 `.wrally/raw/` 里最近一次场次列表补出来的，没有经过真实的 `pull`；`pull`、`push`、生成命令写它只有单元测试。
 - `page`：开着的页面自动刷新（定时加载 `.wrally/page.version.js`）、侧栏随滚动高亮、`J`/`K` 跳镜和 `--watch` 没有在真实浏览器里实测；深色模式和窄屏只用无界面 Chrome 看过一眼。
 - `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
