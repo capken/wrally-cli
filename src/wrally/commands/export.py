@@ -21,7 +21,7 @@ VERSION = 1
 # wrally 自己用的键；其余的都算 extra
 TOP_KEYS = ("project_id", "series_id", "title", "defaults", "rules", "shots", "page", "output")
 SHOT_KEYS = (
-    "key", "story_id", "skip", "narration", "border", "raw", "video_duration",
+    "key", "story_id", "skip", "narration", "border", "raw", "video_duration", "video_resolution",
     "image_prompt", "anim_prompt", "audio_prompt", "keyframe", "video", "audio",
 )  # fmt: skip
 

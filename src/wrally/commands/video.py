@@ -61,13 +61,18 @@ def video_settings(defaults: dict) -> VideoSettings:
 
 
 def shot_settings(settings: VideoSettings, entry: dict) -> VideoSettings:
-    """单镜的视频参数：清单里这一镜写了 `video_duration` 就用它，其余沿用 defaults.video。"""
-    duration = entry.get("video_duration")
-    if duration is None:
-        return settings
-    if isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0:
-        raise PreflightError("bad_video_duration", f"({entry.get('key')}: {duration!r})")
-    return replace(settings, duration=duration)
+    """单镜的视频参数：这一镜写了 `video_duration`、`video_resolution` 就用它，其余沿用 defaults.video。"""
+    for field_, attr, code in (
+        ("video_duration", "duration", "bad_video_duration"),
+        ("video_resolution", "resolution", "bad_video_resolution"),
+    ):
+        value = entry.get(field_)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise PreflightError(code, f"({entry.get('key')}: {value!r})")
+        settings = replace(settings, **{attr: value})
+    return settings
 
 
 def fingerprint(asset_id: str, prompt: str, settings: VideoSettings) -> str:
