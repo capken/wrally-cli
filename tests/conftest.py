@@ -68,6 +68,39 @@ def stories() -> list[dict]:
     ]
 
 
+# 画布模型目录：结构照真实返回（2026-10-21）裁剪
+VIDEO_MODEL = {
+    "id": "vid9",
+    "name": "Seedance-2.0 Mini",
+    "duration_options": [4, 8],
+    "resolution_options": [{"value": "1"}],
+    "support_audio": True,
+}
+CANVAS_MODELS = {
+    "canvas_image_model_list": {
+        "aspect_ratios": ["16:9", "1:1"],
+        "models": [{"id": "img9", "name": "Seedream-5 Pro", "aspect_ratios": ["16:9", "1:1"],
+                    "resolution_options": [{"value": "4", "label": "1K"}, {"value": "5", "label": "2K"}]}],
+    },
+    "canvas_video_provider_config": {
+        "aspect_ratios": ["16:9", "9:16"],
+        "modes": [
+            {"mode": "Text", "models": [VIDEO_MODEL]},
+            {"mode": "FirstLastFrame", "models": [VIDEO_MODEL]},
+            {"mode": "SmartEdit", "models": [{"id": "edit1", "name": "Edit"}]},
+        ],
+    },
+    "canvas_audio_model_list": {
+        "audio_models": [
+            {"model_id": "aud9", "name": "seed-audio-1.5", "is_minimax": False, "max_audio_count": 6,
+             "restrictions": {"max_audio_count": 6}},
+            {"model_id": "mm1", "name": "MiniMax-2.8-HD", "is_minimax": True, "restrictions": {}},
+        ],
+        "music_models": [{"model_id": "mus1", "name": "MiniMax-music3.0", "restrictions": {}}],
+    },
+}  # fmt: skip
+
+
 class FakeWorkRally:
     """离线的 WorkRally：按工具名返回仿真结构，结果里照样带签名地址。"""
 
@@ -123,12 +156,20 @@ class FakeWorkRally:
             return self._generate(arguments, retry, "audio", 1)
         if tool == "shotlist_generate_image":
             return self._generate(arguments, retry, "image", arguments["count"])
-        if tool == "canvas_generate_image":
+        if tool in ("canvas_generate_image", "canvas_generate_video", "canvas_generate_audio"):
+            from wrally.errors import NetworkError
+
             assert retry is False, "提交生成任务不允许自动重试"
+            if self.submit_outcome == "lost":
+                raise NetworkError(hint="generate TimeoutError")
             ids = [f"c{len(self.canvas) + i + 1}" for i in range(arguments["count"])]
             self.canvas.update({i: {"status": "running", "assets": []} for i in ids})
             self.canvas_requests.append(arguments)
+            if self.submit_outcome == "timeout":
+                raise NetworkError(hint="generate TimeoutError")
             return {"task_ids": ids}
+        if tool in CANVAS_MODELS:
+            return CANVAS_MODELS[tool]
         if tool == "canvas_get_task":
             return dict(self.canvas[arguments["task_id"]])
         if tool == "shotlist_model_list":
@@ -224,11 +265,14 @@ class FakeWorkRally:
         self.results[(story_id, "image")]["doing"] -= 1
         self.add_result(story_id, "image", asset_id, created, content)
 
-    def finish_canvas(self, task_id: str, asset_id: str | None, content: bytes = b"canvas"):
+    def finish_canvas(
+        self, task_id: str, asset_id: str | None, content: bytes = b"canvas", kind: str = "image"
+    ) -> None:
         if asset_id is None:
             self.canvas[task_id] = {"status": "failed", "assets": []}
             return
-        self.add_asset(asset_id, "image", content, "canvas.png")
+        ext = {"image": "png", "video": "mp4", "audio": "wav"}[kind]
+        self.add_asset(asset_id, kind, content, f"canvas.{ext}")
         self.canvas[task_id] = {"status": "success", "assets": [{"asset_id": asset_id}]}
 
     def finish(

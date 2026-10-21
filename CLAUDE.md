@@ -16,6 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `src/wrally/`：代码。
 - `tests/`：单元测试，全部离线，用 `tests/conftest.py` 里的 `FakeWorkRally` 模拟远端。
+- `skills/wrally/`：给 Claude 用的 skill（`SKILL.md` 加 `references/project-setup.md`），本机用符号链接挂在 `~/.claude/skills/wrally`，任何目录的会话都靠它知道 wrally 能做什么、怎么用。它讲的是工具本身，不含某一部片子的东西。**加命令、改选项、改错误码或 `export.json` 的字段时同步改它**；它没有经过测试会话的评估，只核对过命令、选项和错误码与代码一致。
 - 仓库里没有任何一部片子的工作区、提示词或素材，也不要放进来。
 
 ## 常用命令
@@ -56,7 +57,7 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 
 不涉及远端的辅助模块：`media.py`（图像比对、抽帧、音高）、`output.py`（表格和输出预算）。
 
-命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`；`audio gen` 在 `audio.py`。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
+命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
 
 ## 写任何命令都要满足的约束
 
@@ -121,6 +122,15 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `video gen` 用 `keyframe.synced`（wrally 上次写进远端的选用图）判断网页上是否被人改过。
 - 单镜要换视频时长就在清单里给这一镜写 `video_duration`，要换分辨率就写 `video_resolution`（Seedance-2.0 Mini：1 是 480p、3 是 720p），不要改 `defaults.video` 里的对应值：它们计入每镜的输入指纹，改默认值会让整集的视频都被判为输入变了。指纹一律经 `video.shot_settings` 取参数。
 
+**单独生成 `wrally gen`**
+
+- 走画布接口（`canvas_generate_image|video|audio`），不碰项目、剧集、场次，也不用清单；状态是输出目录里的 `.wrally-gen.json`（每次提交一条记录，先落盘 `submitting` 再提交，受理后写任务 ID）。
+- 同参数跳过靠 `gen.fingerprint`（kind、模型 ID、全部参数和 `--project`，不含 `--name`）。`NetworkError` 时记录停在 `submitting`、再跑报 `pending_submit`；`ToolError`（服务端明确拒绝）记为 `failed`，可以直接重跑。
+- 模型、分辨率、时长等不写死，每次从 `canvas_*_model_list` / `canvas_video_provider_config` 取再校验。
+- 参考图和首尾帧要传固定地址（`asset_details` + `plain_url`，在 `api/canvas.py` 里换，不出接口层）；参考音频 `ref_audios` 直接收媒资 ID。
+- `canvas_generate_video` 的 `enable_sound` 远端默认 true，`submit` 一律显式写。
+- 结果用 `image.canvas_task` 查（`canvas_get_task` 返回 `status` 和 `assets`，音频也一样，2026-10-21 用场次旁白任务 ID 真实查过），下载复用 `download_assets`。
+
 **远端不可靠的地方**
 
 - 远端的文本会被 wrally 之外的写入改回旧版（推测是网页端开着旧页面时保存造成的，未证实）。`pull` 出现意外的 `local` 时先弄清原因再 `push`。
@@ -148,6 +158,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。
 - 通用化的后续待办（通用模板、多音色等）在设计文档「后续待办：通用化」；视频超分在 `refactor.md` 末尾。
 - 没有做：用语音识别核对旁白与台词；指定使用非最新的那条结果。
+- `wrally gen`（2026-10-21 加）：`models` 和各类 `--dry-run` 的校验真实跑过；提交、等待、下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。画布 `ref_audios` 传媒资 ID 出来的音色是否和场次绑定音色一样，还没真实对比。
 
 ## 提交
 
