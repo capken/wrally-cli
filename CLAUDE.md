@@ -158,7 +158,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。
 - 通用化的后续待办（通用模板、多音色等）在设计文档「后续待办：通用化」；视频超分在 `refactor.md` 末尾。
 - 没有做：用语音识别核对旁白与台词；指定使用非最新的那条结果。
-- `wrally gen`（2026-10-21 加）：`models` 和各类 `--dry-run` 的校验真实跑过；提交、等待、下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。画布 `ref_audios` 传媒资 ID 出来的音色是否和场次绑定音色一样，还没真实对比。
+- `wrally gen`（2026-10-21 加）：`gen audio` 真实跑过（《菲索测光速》逐句 59 次提交，含 `--no-wait` + `gen fetch`、`--again`、同名换参数出 `-b2`），音色「浑厚 A」约 84 Hz，与场次绑定一致；`gen image`、`gen video`、`gen music` 只真实跑过 `--dry-run` 校验，提交和下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。
 
 ## 提交
 
