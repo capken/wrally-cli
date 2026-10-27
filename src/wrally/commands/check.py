@@ -114,6 +114,14 @@ def check(ws: Workspace, spec: str = "all") -> CheckReport:
                     f0 = sec["f0"] = round(measured)
             if why := rules.high_pitch(f0):
                 warnings.append(why)
+            # 只有一个声道有声音的旁白，音高和时长都正常，只能量左右声道的音量差
+            if rules.channel_gap_max is not None:
+                if sec.get("channel_gap") is None:
+                    gap = media.channel_gap(audio)
+                    if gap is not None:
+                        sec["channel_gap"] = gap
+                if why := rules.lopsided(sec.get("channel_gap")):
+                    warnings.append(why)
         slow = alen / vlen if vlen and alen else 0.0
         if rules.slow_max is not None and slow > rules.slow_max:
             warnings.append(f"slow x{slow:.2f} > {rules.slow_max:g}")
@@ -137,7 +145,7 @@ def check(ws: Workspace, spec: str = "all") -> CheckReport:
         "# 检查报告", "",
         f"{len(report.rows)} 镜，{report.warnings} 条警告。"
         f"阈值：音高 ≤ {_limit(rules.f0_max)} Hz，放慢倍数 ≤ {_limit(rules.slow_max)}，"
-        f"旁白 ≤ {_limit(rules.narration_max)} 字。", "",
+        f"旁白 ≤ {_limit(rules.narration_max)} 字，左右声道音量差 ≤ {_limit(rules.channel_gap_max)} dB。", "",
         "| 镜号 | 视频 | 旁白 | 放慢 | 音高 Hz | 抽帧图 | 警告 |",
         "| --- | --- | --- | --- | --- | --- | --- |",
         *lines, "",

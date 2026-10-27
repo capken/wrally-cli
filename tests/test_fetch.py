@@ -80,12 +80,12 @@ async def test_newer_result_replaces_file_and_drops_stale_f0(ws, remote):
     remote.add_result("s02", "audio", "a1", "2026-10-05 18:00:00", b"one")
     await fetch(ws, remote, "audio", "02", http=remote.http())
     data = ws.load()
-    next(e for e in data["shots"] if e["key"] == "02")["audio"]["f0"] = 86
+    next(e for e in data["shots"] if e["key"] == "02")["audio"].update(f0=86, channel_gap=42.3)
     ws.save(data)
     remote.add_result("s02", "audio", "a2", "2026-10-05 19:00:00", b"two")
     await fetch(ws, remote, "audio", "02", http=remote.http())
     audio = entry(ws, "02")["audio"]
-    assert audio["asset_id"] == "a2" and "f0" not in audio
+    assert audio["asset_id"] == "a2" and "f0" not in audio and "channel_gap" not in audio
     assert (ws.root / audio["file"]).read_bytes() == b"two"
 
 
