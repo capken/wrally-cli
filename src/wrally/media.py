@@ -68,6 +68,26 @@ def pitch_available() -> bool:
     return importlib.util.find_spec("librosa") is not None
 
 
+def channel_gap(audio: Path) -> float | None:
+    """各声道 RMS 电平（dB）最大值和最小值之差；单声道是 0，量不出来返回 None。
+    生成的旁白偶尔只有一个声道有声音（《提灯人》EP6 的 02：左 -19 dB、右 -61 dB），
+    音高和时长都正常，只能这样查。"""
+    out = subprocess.run(
+        [_tool("ffmpeg"), "-v", "info", "-nostats", "-i", str(audio),
+         "-af", "astats=measure_overall=none:measure_perchannel=RMS_level", "-f", "null", "-"],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    levels = []
+    for line in out.stderr.splitlines():
+        if "RMS level dB:" in line:
+            value = line.rsplit(":", 1)[1].strip()
+            try:
+                levels.append(max(float(value), -120.0))  # 完全无声是 -inf
+            except ValueError:
+                return None
+    return round(max(levels) - min(levels), 1) if levels else None
+
+
 def median_f0(audio: Path) -> float | None:
     """旁白的基频中位数（Hz）。rules.f0_max 是按这组参数定的，换参数会让同一条旁白差出几十赫兹。"""
     import librosa  # 导入很慢，只在 check 里用到时才加载

@@ -91,6 +91,7 @@ rules:
   f0_max: 97            # 旁白音高中位数上限（Hz）。设了才量音高；audio gen --redo-failed 也用它
   slow_max: 1.25        # 旁白时长 ÷ 视频时长的上限（旁白比画面长，合成时画面就得放慢）
   narration_max: 30     # 每镜台词字数上限，不计标点
+  channel_gap_max: 6    # 旁白左右声道 RMS 音量差上限（dB），防只有一个声道有声音；audio gen --redo-failed 也用它
   words:                # lint 在每镜自己写的提示词里查这些词；kind 是 anim（默认）或 image
     light effect: {kind: anim, words: [光束, 体积光]}
 ```

@@ -95,7 +95,8 @@ async def _media(ws, client, kind, entries, results, raw_assets, http) -> FetchR
             continue
         sec = section(entry, kind)
         if sec.get("asset_id") != dl.asset_id:
-            sec.pop("f0", None)  # 换了一条旁白，旧的音高作废
+            sec.pop("f0", None)  # 换了一条旁白，旧的音高和声道音量差作废
+            sec.pop("channel_gap", None)
         sec["asset_id"] = dl.asset_id
         if dl.asset and dl.asset.task_id:
             sec["task"] = dl.asset.task_id

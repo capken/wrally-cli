@@ -1,4 +1,6 @@
 import io
+import shutil
+import subprocess
 
 import pytest
 from conftest import entry
@@ -262,3 +264,53 @@ def test_bad_rules_stop_before_anything_is_checked(ws, local_media, rules, hint)
     with pytest.raises(PreflightError) as e:
         check(ws)
     assert e.value.code == "bad_rules" and hint in e.value.hint and local_media == {"f0": 0, "sheet": 0}
+
+
+def test_check_flags_one_sided_audio_and_caches_the_gap(ws, local_media, monkeypatch):
+    """旁白只有一个声道有声音时音高和时长都正常，只能看左右声道的音量差。"""
+    measured = []
+
+    def gap(audio):
+        measured.append(audio.name)
+        return 42.3 if audio.name == "02.wav" else 0.0
+
+    monkeypatch.setattr(media, "channel_gap", gap)
+    data = ws.load()
+    data["rules"] = {"channel_gap_max": 6}
+    ws.save(data)
+    report = check(ws)
+    assert {r[0]: r[5] for r in report.flagged()} == {"02": "channel gap 42.3dB > 6"}
+    assert entry(ws, "02")["audio"]["channel_gap"] == 42.3
+    assert "左右声道音量差 ≤ 6 dB" in (ws.state_dir / "report.md").read_text(encoding="utf-8")
+    check(ws)
+    assert len(measured) == 3  # 量过的不再量
+
+
+def test_channel_gap_is_not_measured_without_the_rule(ws, local_media, monkeypatch):
+    def boom(audio):
+        raise AssertionError("measured without rules.channel_gap_max")
+
+    monkeypatch.setattr(media, "channel_gap", boom)
+    check(ws)
+    assert "channel_gap" not in entry(ws, "02")["audio"]
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_channel_gap_measures_each_channel(tmp_path):
+    def make(name, graph):
+        out = tmp_path / name
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=200:d=1",
+             "-filter_complex", graph, str(out)],
+            check=True,
+        )  # fmt: skip
+        return out
+
+    join = "join=inputs=2:channel_layout=stereo"
+    quiet_right = make("lopsided.wav", f"[0]asplit[l][r];[r]volume=0.01[q];[l][q]{join}")
+    even = make("even.wav", f"[0]asplit[l][r];[l][r]{join}")
+    silent_right = make("silent.wav", f"[0]asplit[l][r];[r]volume=0[q];[l][q]{join}")
+    assert 39 < media.channel_gap(quiet_right) < 41  # 音量 1% 约是 -40 dB
+    assert media.channel_gap(even) == 0
+    assert media.channel_gap(silent_right) > 80  # 完全无声按 -120 dB 算，不会是无穷大
+    assert media.channel_gap(make("mono.wav", "[0]anull")) == 0

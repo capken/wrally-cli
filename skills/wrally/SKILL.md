@@ -98,6 +98,8 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 
 `check` 查不出来的两件事：旁白可能念到一半就结束（时长明显偏短的要听一遍或用语音识别核对）；wrally 之外生成的旁白没有指纹，台词改了它不会报过期。
 
+旁白偶尔只有一个声道有声音，音高和时长都正常。项目的 `rules` 设了 `channel_gap_max` 时 `check` 会报 `channel gap …dB`，`audio gen --redo-failed` 会重做；没设就查不出来。
+
 `wait` 超时不代表失败，任务可能还在跑，再 `wait` 一次。`audio gen --wait` 在等待阶段崩溃过一次（打出整段追踪栈）而任务其实已受理：遇到就用 `wait audio`、`fetch audio` 接上，不要重新提交。
 
 ## 单独生成（不用项目和清单）

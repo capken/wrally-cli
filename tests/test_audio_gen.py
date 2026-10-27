@@ -122,6 +122,15 @@ async def test_redo_failed_only_redoes_high_pitch_and_failed_shots(ready):
     assert needs_redo(entry(ws, "01"), Rules()) == ""  # 没设上限就不按音高重做
 
 
+def test_redo_failed_also_covers_one_sided_audio():
+    """只有一个声道有声音的旁白（check 写进清单的 channel_gap）也算没过检查。"""
+    rules = Rules(f0_max=97, channel_gap_max=6)
+    lopsided = {"audio": {"status": "done", "f0": 91, "channel_gap": 42.3}}
+    assert needs_redo(lopsided, rules) == "channel gap 42.3dB > 6"
+    assert needs_redo({"audio": {"status": "done", "f0": 91, "channel_gap": 0.1}}, rules) == ""
+    assert needs_redo(lopsided, Rules(f0_max=97)) == ""  # 没设上限就不按声道重做
+
+
 async def test_missing_narration_or_defaults_stops_before_remote(ready):
     ws, remote = ready
     edit(ws, "02", narration=None)
