@@ -13,7 +13,7 @@ from wrally.workspace import Workspace, overlay
 
 PUNCT = "，。：？；、“”"  # 数台词字数时不计的标点（书名号、间隔号、『』照常计数）
 WORD_KINDS = ("image", "anim")
-KEYS = ("f0_max", "slow_max", "narration_max", "channel_gap_max", "words")
+KEYS = ("f0_max", "slow_max", "narration_max", "channel_gap_max", "noise_floor_max", "words")
 
 
 def core_len(text: str) -> int:
@@ -34,6 +34,7 @@ class Rules:
     slow_max: float | None = None
     narration_max: int | None = None
     channel_gap_max: float | None = None
+    noise_floor_max: float | None = None
     words: tuple[WordRule, ...] = ()
 
     def high_pitch(self, f0: float | None) -> str:
@@ -46,9 +47,18 @@ class Rules:
             return ""
         return f"channel gap {gap:g}dB > {self.channel_gap_max:g}"
 
+    def noisy(self, floor: float | None) -> str:
+        if floor is None or self.noise_floor_max is None or floor <= self.noise_floor_max:
+            return ""
+        return f"noise floor {floor:g}dB > {self.noise_floor_max:g}"
+
     def failed_audio(self, audio: dict) -> str:
-        """check 写进清单的量值里有没过的：音高超标或左右声道音量差太大。"""
-        return self.high_pitch(audio.get("f0")) or self.lopsided(audio.get("channel_gap"))
+        """check 写进清单的量值里有没过的：音高超标、左右声道音量差太大或停顿处有背景音。"""
+        return (
+            self.high_pitch(audio.get("f0"))
+            or self.lopsided(audio.get("channel_gap"))
+            or self.noisy(audio.get("noise_floor"))
+        )
 
 
 def _number(name: str, value: Any) -> Any:
@@ -56,6 +66,14 @@ def _number(name: str, value: Any) -> Any:
         return None
     if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
         raise PreflightError("bad_rules", f"(rules.{name}: need a positive number or null)")
+    return value
+
+
+def _decibels(name: str, value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value >= 0:
+        raise PreflightError("bad_rules", f"(rules.{name}: need a negative number of dB or null)")
     return value
 
 
@@ -83,5 +101,6 @@ def load_rules(ws: Workspace, data: dict[str, Any]) -> Rules:
         slow_max=_number("slow_max", merged.get("slow_max")),
         narration_max=_number("narration_max", merged.get("narration_max")),
         channel_gap_max=_number("channel_gap_max", merged.get("channel_gap_max")),
+        noise_floor_max=_decibels("noise_floor_max", merged.get("noise_floor_max")),
         words=tuple(_word_rule(str(k), v) for k, v in groups.items() if v is not None),
     )

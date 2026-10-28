@@ -122,6 +122,14 @@ def check(ws: Workspace, spec: str = "all") -> CheckReport:
                         sec["channel_gap"] = gap
                 if why := rules.lopsided(sec.get("channel_gap")):
                     warnings.append(why)
+            # 带背景音的旁白：说话的停顿处也有声音
+            if rules.noise_floor_max is not None:
+                if sec.get("noise_floor") is None:
+                    floor = media.noise_floor(audio)
+                    if floor is not None:
+                        sec["noise_floor"] = floor
+                if why := rules.noisy(sec.get("noise_floor")):
+                    warnings.append(why)
         slow = alen / vlen if vlen and alen else 0.0
         if rules.slow_max is not None and slow > rules.slow_max:
             warnings.append(f"slow x{slow:.2f} > {rules.slow_max:g}")
@@ -145,7 +153,8 @@ def check(ws: Workspace, spec: str = "all") -> CheckReport:
         "# 检查报告", "",
         f"{len(report.rows)} 镜，{report.warnings} 条警告。"
         f"阈值：音高 ≤ {_limit(rules.f0_max)} Hz，放慢倍数 ≤ {_limit(rules.slow_max)}，"
-        f"旁白 ≤ {_limit(rules.narration_max)} 字，左右声道音量差 ≤ {_limit(rules.channel_gap_max)} dB。", "",
+        f"旁白 ≤ {_limit(rules.narration_max)} 字，左右声道音量差 ≤ {_limit(rules.channel_gap_max)} dB，"
+        f"底噪 ≤ {_limit(rules.noise_floor_max)} dB。", "",
         "| 镜号 | 视频 | 旁白 | 放慢 | 音高 Hz | 抽帧图 | 警告 |",
         "| --- | --- | --- | --- | --- | --- | --- |",
         *lines, "",
