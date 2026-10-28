@@ -255,6 +255,7 @@ def test_pitch_is_skipped_with_a_note_when_librosa_is_not_installed(ws, local_me
         ({"words": {"mine": {"kind": "audio", "words": ["x"]}}}, "rules.words.mine.kind"),
         ({"words": {"mine": {"words": "x"}}}, "rules.words.mine"),
         ({"words": ["光束"]}, "rules.words"),
+        ({"noise_floor_max": 50}, "rules.noise_floor_max"),  # 电平是负的 dB，写成正数多半是漏了负号
     ],
 )
 def test_bad_rules_stop_before_anything_is_checked(ws, local_media, rules, hint):
@@ -314,3 +315,50 @@ def test_channel_gap_measures_each_channel(tmp_path):
     assert media.channel_gap(even) == 0
     assert media.channel_gap(silent_right) > 80  # 完全无声按 -120 dB 算，不会是无穷大
     assert media.channel_gap(make("mono.wav", "[0]anull")) == 0
+
+
+def test_check_flags_background_noise_and_caches_the_floor(ws, local_media, monkeypatch):
+    """带背景音的旁白在说话的停顿处也有声音。"""
+    measured = []
+
+    def floor(audio):
+        measured.append(audio.name)
+        return -44.2 if audio.name == "02.wav" else -70.0
+
+    monkeypatch.setattr(media, "noise_floor", floor)
+    data = ws.load()
+    data["rules"] = {"noise_floor_max": -50}
+    ws.save(data)
+    report = check(ws)
+    assert {r[0]: r[5] for r in report.flagged()} == {"02": "noise floor -44.2dB > -50"}
+    assert entry(ws, "02")["audio"]["noise_floor"] == -44.2
+    assert "底噪 ≤ -50 dB" in (ws.state_dir / "report.md").read_text(encoding="utf-8")
+    check(ws)
+    assert len(measured) == 3  # 量过的不再量
+
+
+def test_noise_floor_is_not_measured_without_the_rule(ws, local_media, monkeypatch):
+    def boom(audio):
+        raise AssertionError("measured without rules.noise_floor_max")
+
+    monkeypatch.setattr(media, "noise_floor", boom)
+    check(ws)
+    assert "noise_floor" not in entry(ws, "02")["audio"]
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+def test_noise_floor_is_the_quietest_stretch(tmp_path):
+    def make(name, gap):
+        out = tmp_path / name
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=200:d=1", "-f", "lavfi",
+             "-i", gap, "-filter_complex", "[0][1][0]concat=n=3:v=0:a=1", str(out)],
+            check=True,
+        )  # fmt: skip
+        return out
+
+    silent = make("silent.wav", "anullsrc=r=44100:cl=mono:d=0.5")
+    hum = make("hum.wav", "sine=f=60:d=0.5,volume=0.08")  # sine 振幅本是 1/8，乘 0.08 约 -43 dB
+    assert media.noise_floor(silent) == -120
+    assert -46 < media.noise_floor(hum) < -40
+    assert media.noise_floor(make("short.wav", "anullsrc=d=0.01")) < -10  # 没有停顿就是说话的电平

@@ -4,8 +4,8 @@
 → 回读核对 → 一次提交。旁白提示词由 audio gen 自己写入，不要求事先 push。
 
 幂等和 video gen 同一套：每镜记下输入指纹（台词拼出的提示词 + 模型 + 音色），没变不重复提交。
---redo-failed 只重做检查没过的镜头：音高超标、左右声道音量差太大
-（check 写进清单的 f0、channel_gap）或上次生成失败。
+--redo-failed 只重做检查没过的镜头：音高超标、左右声道音量差太大、停顿处有背景音
+（check 写进清单的 f0、channel_gap、noise_floor）或上次生成失败。
 """
 
 import hashlib

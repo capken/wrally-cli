@@ -131,6 +131,13 @@ def test_redo_failed_also_covers_one_sided_audio():
     assert needs_redo(lopsided, Rules(f0_max=97)) == ""  # 没设上限就不按声道重做
 
 
+def test_redo_failed_also_covers_background_noise():
+    rules = Rules(noise_floor_max=-50)
+    noisy = {"audio": {"status": "done", "noise_floor": -44.2}}
+    assert needs_redo(noisy, rules) == "noise floor -44.2dB > -50"
+    assert needs_redo({"audio": {"status": "done", "noise_floor": -69.1}}, rules) == ""
+
+
 async def test_missing_narration_or_defaults_stops_before_remote(ready):
     ws, remote = ready
     edit(ws, "02", narration=None)

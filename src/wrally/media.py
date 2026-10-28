@@ -1,4 +1,4 @@
-"""本地媒体处理：图像比对、抽帧拼图、时长、旁白音高。不涉及远端。"""
+"""本地媒体处理：图像比对、抽帧拼图、时长、旁白音高、声道音量差、底噪。不涉及远端。"""
 
 import importlib.util
 import json
@@ -86,6 +86,40 @@ def channel_gap(audio: Path) -> float | None:
             except ValueError:
                 return None
     return round(max(levels) - min(levels), 1) if levels else None
+
+
+def noise_floor(audio: Path, *, span: float = 0.3) -> float | None:
+    """最安静的连续 span 秒的平均电平（dB，每 0.05 秒一帧取 RMS 再平均）。说话的停顿处应当接近无声；
+    带背景音的旁白在这里也有声音（《提灯人》EP6：干净的在 -54 dB 以下，带背景音的 -42～-46 dB）。
+    比 span 还短或量不出来返回 None。"""
+    import array
+    import math
+    import sys
+
+    rate, frame = 16000, 800
+    out = subprocess.run(
+        [_tool("ffmpeg"), "-v", "error", "-i", str(audio), "-ac", "1", "-ar", str(rate), "-f", "s16le", "-"],
+        capture_output=True, check=False,
+    )  # fmt: skip
+    if out.returncode != 0:
+        return None
+    samples = array.array("h")
+    samples.frombytes(out.stdout[: len(out.stdout) // 2 * 2])
+    if sys.byteorder == "big":
+        samples.byteswap()
+    levels = []
+    for start in range(0, len(samples) - frame + 1, frame):
+        power = sum(x * x for x in samples[start : start + frame]) / frame / 32768**2
+        levels.append(max(10 * math.log10(power + 1e-12), -120.0))
+    n = max(1, round(span * rate / frame))
+    if len(levels) < n:
+        return None
+    window = sum(levels[:n])
+    quietest = window
+    for i in range(n, len(levels)):
+        window += levels[i] - levels[i - n]
+        quietest = min(quietest, window)
+    return round(quietest / n, 1)
 
 
 def median_f0(audio: Path) -> float | None:

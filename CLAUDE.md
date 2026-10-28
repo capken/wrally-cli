@@ -100,7 +100,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 候选和结果以 asset_id 为主键，任务 ID 只是附属信息。`get_result` 不返回任务 ID；`doing_tasks` 里的 ID 是另一种格式，不要拿来对应。
 - `keyframe.candidates` 只追加：已有候选保持原位，否则候选序号会错位。
 - 本地只存每镜独有的提示词，公共文本由 `prompts.py` 拼接；与远端比较一律用 `prompts.composed`。偏离公共文本的镜头标 `raw`。`pull` 只在「拼回去逐字相同」时才拆分，不要改成模糊匹配。
-- 音高参数（`media.median_f0`）不要改：各部片子的 `rules.f0_max` 是按这组参数定的。`librosa` 是可选依赖（`pitch`，开发环境里随 dev 组装着）；只在设了 `f0_max` 时才量，没装就跳过并留一行 `note`。左右声道音量差（`media.channel_gap`，用 ffmpeg 的 astats，不依赖 librosa）只在设了 `channel_gap_max` 时才量；两个量值都缓存在清单的 `audio` 小节（`f0`、`channel_gap`），`fetch` 换了旁白就清掉。
+- 音高参数（`media.median_f0`）不要改：各部片子的 `rules.f0_max` 是按这组参数定的。`librosa` 是可选依赖（`pitch`，开发环境里随 dev 组装着）；只在设了 `f0_max` 时才量，没装就跳过并留一行 `note`。左右声道音量差（`media.channel_gap`，用 ffmpeg 的 astats，不依赖 librosa）只在设了 `channel_gap_max` 时才量；底噪（`media.noise_floor`，ffmpeg 解码后用标准库算，最安静的连续 0.3 秒的平均电平）只在设了 `noise_floor_max` 时才量。三个量值都缓存在清单的 `audio` 小节（`f0`、`channel_gap`、`noise_floor`），`fetch` 换了旁白就清掉。
 - wrally 只数整段台词的字数（`rules.core_len`，不计标点）。逐条字幕的断句和长短是合成脚本的事，wrally 里没有对应的代码，`lint` 也不查。
 - `lint` 的关键词检查只看每镜自己写的部分，并跳过否定写法（「不出现 A、B」和「不碰杯」都算）。
 

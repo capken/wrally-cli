@@ -100,6 +100,8 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 
 旁白偶尔只有一个声道有声音，音高和时长都正常。项目的 `rules` 设了 `channel_gap_max` 时 `check` 会报 `channel gap …dB`，`audio gen --redo-failed` 会重做；没设就查不出来。
 
+旁白偶尔混进背景音乐或环境声。设了 `noise_floor_max`（负的 dB，如 -50）时 `check` 量最安静的连续 0.3 秒的电平：说话的停顿处应当接近无声，带背景音的会报 `noise floor …dB`，`--redo-failed` 同样会重做。同一句台词重做几次都带背景音时，改写台词往往比再生成管用。
+
 `wait` 超时不代表失败，任务可能还在跑，再 `wait` 一次。`audio gen --wait` 在等待阶段崩溃过一次（打出整段追踪栈）而任务其实已受理：遇到就用 `wait audio`、`fetch audio` 接上，不要重新提交。
 
 ## 单独生成（不用项目和清单）
