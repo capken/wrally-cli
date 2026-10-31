@@ -1,16 +1,16 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+给在这个仓库里改代码的 Agent 看的开发说明。`AGENTS.md` 是指向本文件的符号链接，供读 `AGENTS.md` 的 Agent 使用。只对作者本机有效的内容（本机路径、全局安装、镜像）在 `CLAUDE.local.md`，不进仓库。
 
 ## wrally 是什么
 
-本地命令行工具（包名 `wrally-cli`，命令叫 `wrally`），把 WorkRally 上「一集短视频」（短番项目 → 剧集 → 场次）的批量操作收进脚本：关键帧 → 视频 → 旁白，最后把合成需要的输入导出给合成脚本。目的是让 Claude 只通过 bash 调 `wrally` 并看到几行摘要，而不是逐镜调用 WorkRally MCP 把上下文撑爆。
+本地命令行工具（包名 `wrally-cli`，命令叫 `wrally`），把 WorkRally 上「一集短视频」（短番项目 → 剧集 → 场次）的批量操作收进脚本：关键帧 → 视频 → 旁白，最后把合成需要的输入导出给合成脚本。目的是让 Agent 只通过 bash 调 `wrally` 并看到几行摘要，而不是逐镜调用 WorkRally MCP 把上下文撑爆。
 
-它不绑定任何一部片子：版式、字体、阈值、词表都不在这里。每部片子是一个创作项目目录（项目文件 `wrally.yaml` 加各集的工作区），有自己的合成脚本和自己的 `CLAUDE.md`。目前唯一的创作项目是《提灯人》，在 `/Users/allenzheng/codes/lantern-bearer`，改了行为要拿它做回归。
+它不绑定任何一部片子：版式、字体、阈值、词表都不在这里。每部片子是一个创作项目目录（项目文件 `wrally.yaml` 加各集的工作区），有自己的合成脚本和自己的说明文件。主要的创作项目是《提灯人》（在它自己的目录里，本机路径见 `CLAUDE.local.md`），改了行为要拿它做回归。
 
 明确不做：通用 WorkRally SDK；替人选图；剪辑合成（wrally 不调用合成脚本、不解析它的输出，只用 `wrally export` 写一份中性的 `.wrally/export.json`）。
 
-`WorkRally 批量命令行工具（wrally）设计文档.md` 是规格，描述的是**现在的实际行为**：清单字段、每条命令的调用顺序、规则与坑、待确认问题都在里面。改行为时同步更新它。`refactor.md` 是从旧仓库 `capken/wrally` 拆出来的计划和记录（四步都已完成，旧仓库和旧目录还没舍弃）。
+`WorkRally 批量命令行工具（wrally）设计文档.md` 是规格，描述的是**现在的实际行为**：清单字段、每条命令的调用顺序、规则与坑、待确认问题都在里面。改行为时同步更新它。`refactor.md` 是从旧仓库 `capken/wrally` 拆出来的计划和记录（四步都已完成），只在作者本机，不进仓库。
 
 ## 仓库里有什么
 
@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用命令
 
-用 `uv` 管理环境（Python 3.11，版本写在 `.python-version`）。本机系统的 `python3` 是 3.9，一律通过 `uv run`。
+用 `uv` 管理环境（Python 3.11，版本写在 `.python-version`）。系统自带的 `python3` 版本可能不够，一律通过 `uv run`。
 
 ```
 uv sync                                          # 安装依赖（dev 组里带着可选的 librosa）
@@ -38,7 +38,7 @@ uv run wrally page -C <项目目录>                 # 重建各集页面和总�
 uv run wrally export -C <单集目录>               # 写 .wrally/export.json，给合成脚本用
 ```
 
-本机已把这份源码装成全局命令 `wrally`（`uv tool install --editable …[pitch]`，2026-10-13），在创作项目里直接敲 `wrally`，源码改了立即生效；改了依赖要重装，命令在 `refactor.md` 第 4 步。这台机器有时解析不了 `pypi.org`，`uv` 要下载而连不上时加 `--default-index https://pypi.tuna.tsinghua.edu.cn/simple`（清华镜像，用户同意过），或在缓存够用时加 `--offline`。
+装成全局命令：`uv tool install --python 3.11 --editable ".[pitch]"`。可编辑安装，源码改了立即生效；改了依赖要重装。`uv tool install` 不读 `uv.lock`，装的是当时最新的依赖。连不上 PyPI 时，`uv` 加 `--default-index <镜像>` 或在缓存够用时加 `--offline`；用镜像时不要重新生成 `uv.lock`，免得把镜像地址写进去。
 
 环境变量：`WRALLY_CONFIG_DIR`（凭证目录）、`WRALLY_MCP_URL`（MCP 地址）、`WRALLY_CONCURRENCY`（查询和下载的并发数，默认 4）、`WRALLY_MAX_WAIT`（所有等待的上限，秒，压住各命令的 `--timeout`）。
 
@@ -156,7 +156,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1（现在会被兜底成一行 `internal_error`、退出码 4）。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
 - 项目文件、`rules`、`export` 和这次拆分之后，调用远端的命令只跑过 `pull`（2026-10-13，四集零改动）；`push` 和三个生成命令还没跑过。离线的 `status`、`lint`、`check`、`page`、`export` 在四集上逐一对比过。
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。
-- 通用化的后续待办（通用模板、多音色等）在设计文档「后续待办：通用化」；视频超分在 `refactor.md` 末尾。
+- 后续待办（通用模板、多音色、视频样片、视频超分等）在设计文档「后续待办：通用化」。
 - 没有做：用语音识别核对旁白与台词；指定使用非最新的那条结果。
 - `wrally gen`（2026-10-21 加）：`gen audio` 真实跑过（《菲索测光速》逐句 59 次提交，含 `--no-wait` + `gen fetch`、`--again`、同名换参数出 `-b2`），音色「浑厚 A」约 84 Hz，与场次绑定一致；`gen image`、`gen video`、`gen music` 只真实跑过 `--dry-run` 校验，提交和下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。
 

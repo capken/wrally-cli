@@ -132,4 +132,4 @@ wrally gen fetch -o out                              # 超时、--no-wait 或下
 ## 更多
 
 - 开一部新片子、写 `wrally.yaml`、清单字段、给片子写合成脚本要读的 `export.json`：读 `references/project-setup.md`。
-- 工具的源码和开发说明在 wrally-cli 仓库（`https://github.com/capken/wrally-cli`；本机用 `--editable` 装的，改的就是它的本地副本）。要改工具本身的行为到那里去改，不要在创作项目里绕过它。
+- 工具的源码、开发说明（`CLAUDE.md`）和完整规格（设计文档）在 wrally-cli 仓库（`https://github.com/capken/wrally-cli`；本机用 `--editable` 装的，改的就是它的本地副本）。要改工具本身的行为到那里去改，不要在创作项目里绕过它。
