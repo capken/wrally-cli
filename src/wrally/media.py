@@ -45,6 +45,32 @@ def duration(path: Path) -> float:
         return 0.0
 
 
+def probe(path: Path) -> dict:
+    """ffprobe 看到的时长、宽高和是否有音轨。读不出来时各项为空。"""
+    out = subprocess.run(
+        [_tool("ffprobe"), "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height",
+         "-of", "json", str(path)],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    try:
+        data = json.loads(out.stdout or "{}")
+    except ValueError:
+        data = {}
+    streams = data.get("streams") or []
+    video = next((s for s in streams if s.get("codec_type") == "video"), {})
+    try:
+        length = float((data.get("format") or {}).get("duration") or 0)
+    except ValueError:
+        length = 0.0
+    return {
+        "duration": length,
+        "width": video.get("width"),
+        "height": video.get("height"),
+        "video": bool(video),
+        "audio": any(s.get("codec_type") == "audio" for s in streams),
+    }
+
+
 def contact_sheet(video: Path, out: Path, *, columns: int = 3, rows: int = 2, width: int = 320) -> bool:
     """从视频里均匀抽 columns×rows 帧，拼成一张小图。"""
     length = duration(video)

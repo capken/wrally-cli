@@ -179,3 +179,52 @@ async def test_new_params_under_same_name_do_not_overwrite(tmp_path, remote):
     await gen.fetch(remote, tmp_path, http=remote.http())
     assert (tmp_path / "line.wav").read_bytes() == b"old"
     assert (tmp_path / "line-b2.wav").read_bytes() == b"new"
+
+
+def flaky_http(remote, failures: int):
+    """前 failures 次请求连接超时，之后正常返回。"""
+    import httpx2
+
+    left = {"n": failures}
+
+    def handler(request):
+        if left["n"]:
+            left["n"] -= 1
+            raise httpx2.ConnectTimeout("timed out", request=request)
+        return httpx2.Response(200, content=remote.files[request.url.path.lstrip("/")])
+
+    return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+
+
+def video_params(**extra):
+    return {
+        "prompt": "推镜",
+        "model": "vid9",
+        "count": 1,
+        "mode": "text",
+        "image": "ref1",
+        "duration": 4,
+    } | extra
+
+
+async def test_url_lookup_retries_then_submits(tmp_path, remote, monkeypatch):
+    from wrally.api import assets
+
+    monkeypatch.setattr(assets, "RETRY_DELAYS", (0, 0))
+    remote.add_asset("ref1", "image", b"img", "ref.png")
+    await gen.gen(remote, "video", video_params(), tmp_path, http=flaky_http(remote, 1))
+    assert remote.canvas_requests[0]["single_image_url"] == "https://dl.example.com/ref1"
+    assert log(tmp_path)[0]["state"] == "submitted"
+
+
+async def test_url_lookup_failure_submits_nothing_and_leaves_no_pending(tmp_path, remote, monkeypatch):
+    from wrally.api import assets
+
+    monkeypatch.setattr(assets, "RETRY_DELAYS", (0, 0))
+    remote.add_asset("ref1", "image", b"img", "ref.png")
+    with pytest.raises(NetworkError):
+        await gen.gen(remote, "video", video_params(), tmp_path, http=flaky_http(remote, 9))
+    assert not remote.canvas_requests and gen.load_log(tmp_path) == []  # 没有 submitting 记录
+
+    await gen.gen(remote, "video", video_params(), tmp_path, http=flaky_http(remote, 0))  # 重跑不被拦
+    assert len(remote.canvas_requests) == 1

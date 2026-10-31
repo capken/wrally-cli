@@ -30,6 +30,7 @@ from wrally.commands import new as new_cmd
 from wrally.commands import page as page_cmd
 from wrally.commands import pull as pull_cmd
 from wrally.commands import push as push_cmd
+from wrally.commands import smoke as smoke_cmd
 from wrally.commands import status as status_cmd
 from wrally.commands import verify as verify_cmd
 from wrally.commands import video as video_cmd
@@ -775,6 +776,41 @@ def gen_fetch(
     report = _remote(verbose, lambda client: gen_cmd.fetch(client, out, job_ids=job, timeout=_limit(timeout)))
     _emit(report.summary, gen_cmd.HEADERS, report.rows, as_json, details=str(out / gen_cmd.LOG))
     if report.failed or report.timed_out:
+        raise typer.Exit(1)
+
+
+@app.command()
+@handle_errors
+def smoke(
+    image_model: Annotated[
+        str | None, typer.Option("--image-model", help="图像模型 ID 或名称，默认 defaults.image.model")
+    ] = None,
+    audio_model: Annotated[
+        str | None, typer.Option("--audio-model", help="音频模型 ID 或名称，默认 defaults.audio.model")
+    ] = None,
+    video_model: Annotated[
+        str | None, typer.Option("--video-model", help="视频模型 ID 或名称，默认 defaults.video.model")
+    ] = None,
+    only: Annotated[str | None, typer.Option("--only", help="只跑这几步，如 image,audio")] = None,
+    project: ProjectOpt = None,
+    resume: Annotated[bool, typer.Option("--resume", help="接着最近一次运行：已提交的不重复提交")] = False,
+    timeout: TimeoutOpt = 1800,
+    dry_run: DryRunOpt = False,
+    as_json: JsonOpt = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """真实调用 WorkRally，依次生成图像、配音和 5 秒视频并检查文件（消耗额度）。
+
+    结果在当前目录的 .wrally-smoke/ 下。
+    """
+    models_given = {"image": image_model, "audio": audio_model, "video": video_model}
+    steps = [s.strip() for s in only.split(",") if s.strip()] if only else None
+    report = _remote(verbose, lambda client: smoke_cmd.run(
+        client, Path("."), models=models_given, only=steps, project_id=project, resume=resume,
+        dry_run=dry_run, timeout=_limit(timeout)))  # fmt: skip
+    details = str(report.run_dir / smoke_cmd.PLAN) if report.run_dir else None
+    _emit(report.summary, smoke_cmd.HEADERS, report.rows, as_json, details=details)
+    if report.failed or report.pending:
         raise typer.Exit(1)
 
 

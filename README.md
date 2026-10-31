@@ -174,10 +174,11 @@ WorkBuddy 桌面端在本机执行命令，skill 格式与 Claude Code 相同（
 | 「第 5 镜重做视频」 | `wrally video gen --shots 05 --redo --dry-run` |
 | 「检查一下素材」 | `wrally check`，只报告有警告的镜头 |
 | 「用 WorkRally 生成一段配音」 | `wrally gen audio … --dry-run` |
+| 「测一下生成接口能不能用」 | `wrally smoke --dry-run`，确认后运行 `wrally smoke`，依次生成图像、配音和 5 秒视频并检查文件 |
 
 以下操作会产生实际影响：
 
-- 生成类命令（`keyframe gen`、`video gen`、`audio gen`、`gen`）消耗真实额度。
+- 生成类命令（`keyframe gen`、`video gen`、`audio gen`、`gen`、`smoke`）消耗真实额度。
 - `push` 覆盖远端的提示词。
 - `new` 在远端创建剧集和场次。
 
