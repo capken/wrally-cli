@@ -150,6 +150,18 @@ async def test_partial_failure_and_resume_after_timeout(tmp_path, remote):
     assert await gen.fetch(remote, tmp_path, http=remote.http()) is not None  # 没有待处理的记录也不出错
 
 
+async def test_failure_reason_is_recorded_and_shown(tmp_path, remote):
+    report = await gen.gen(remote, "audio", audio_params(name="line1"), tmp_path)
+    task_id = log(tmp_path)[0]["tasks"][0]["task_id"]
+    remote.finish_canvas(
+        task_id, None, error={"message": "现在使用的人比较多 / 请过会儿再试试 https://x.test/a?sig=1"}
+    )
+    fetched = await gen.fetch(remote, tmp_path, job_ids=report.job_ids, http=remote.http())
+    reason = "现在使用的人比较多 / 请过会儿再试试 <url>"
+    assert fetched.rows == [("001", f"failed: {reason}", "-")]
+    assert log(tmp_path)[0]["tasks"][0]["error"] == reason
+
+
 async def test_music_lyrics_modes(tmp_path, remote):
     await gen.gen(remote, "music", {"prompt": "钢琴", "model": "mus1"}, tmp_path)
     await gen.gen(remote, "music", {"prompt": "钢琴", "model": "mus1", "lyrics": "ai"}, tmp_path)

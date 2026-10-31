@@ -266,10 +266,15 @@ class FakeWorkRally:
         self.add_result(story_id, "image", asset_id, created, content)
 
     def finish_canvas(
-        self, task_id: str, asset_id: str | None, content: bytes = b"canvas", kind: str = "image"
+        self,
+        task_id: str,
+        asset_id: str | None,
+        content: bytes = b"canvas",
+        kind: str = "image",
+        error: dict | str | None = None,
     ) -> None:
         if asset_id is None:
-            self.canvas[task_id] = {"status": "failed", "assets": []}
+            self.canvas[task_id] = {"status": "failed", "assets": []} | ({"error": error} if error else {})
             return
         ext = {"image": "png", "video": "mp4", "audio": "wav"}[kind]
         self.add_asset(asset_id, kind, content, f"canvas.{ext}")

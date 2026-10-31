@@ -1,5 +1,6 @@
 """关键帧生成：场次生图，以及带参考图的画布图生图。"""
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,6 +78,7 @@ async def canvas_generate(
 class CanvasTask:
     state: str  # running / done / failed
     asset_ids: list[str] = field(default_factory=list)
+    error: str | None = None  # 失败时服务端给的原因（如「现在使用的人比较多」）
 
 
 async def canvas_task(
@@ -89,5 +91,15 @@ async def canvas_task(
     if status == "success" or code == 4:
         return CanvasTask("done", [a["asset_id"] for a in data.get("assets") or [] if a.get("asset_id")])
     if status in ("failed", "cancelled", "canceled", "error") or code in (5, 6):
-        return CanvasTask("failed")
+        return CanvasTask("failed", error=_error_message(data.get("error")))
     return CanvasTask("running")
+
+
+def _error_message(error: object, limit: int = 60) -> str | None:
+    """取出失败原因的一行文字；不含地址。"""
+    if isinstance(error, dict):
+        error = error.get("message") or error.get("msg")
+    if not isinstance(error, str):
+        return None
+    text = " ".join(re.sub(r"https?://\S+", "<url>", error).split())
+    return (text[: limit - 1] + "…" if len(text) > limit else text) or None

@@ -215,14 +215,17 @@ async def fetch(
     while True:
         running = [(j, t) for j in chosen for t in j["tasks"] if t["state"] == "running"]
         for job, task in running:
-            got = await canvas_task(client, task["task_id"], job.get("project_id"))
+            raw = out / RAW / f"{job['id']}-task-{task['task_id']}.json"
+            got = await canvas_task(client, task["task_id"], job.get("project_id"), raw_path=raw)
             if got.state == "done":
                 task["state"] = "done"
                 task["asset_id"] = got.asset_ids[0] if got.asset_ids else None
                 if not task["asset_id"]:
                     task["state"] = "failed"
+                    task["error"] = "no_asset"
             elif got.state == "failed":
                 task["state"] = "failed"
+                task["error"] = got.error
         if running:
             save_log(out, jobs)
         if not any(t["state"] == "running" for j in chosen for t in j["tasks"]):
@@ -257,7 +260,8 @@ async def fetch(
                 report.rows.append((job["id"], "running", "-"))
             elif task["state"] == "failed":
                 report.failed += 1
-                report.rows.append((job["id"], "failed", "-"))
+                reason = task.get("error")
+                report.rows.append((job["id"], f"failed: {reason}" if reason else "failed", "-"))
             elif task.get("file"):
                 done_files += 1
                 report.rows.append((job["id"], "done", task["file"]))

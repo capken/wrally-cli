@@ -74,6 +74,23 @@ async def test_new_failure_is_reported_even_when_old_results_exist(ws, remote):
     assert report.rows == [("02", "failed", "")] and report.failed == 1
 
 
+async def test_later_wait_keeps_failed_until_a_new_result_appears(ws, remote):
+    """任务失败后再 wait：远端因旧结果显示完成，本地仍记失败；出了新结果才算完成。"""
+    remote.add_result("s02", "audio", "a1", "2026-10-05 18:00:00")
+    remote.results[("s02", "audio")]["failed"] = 1
+    data = ws.load()
+    shot = next(e for e in data["shots"] if e["key"] == "02")
+    shot["audio"] = {"status": "failed", "results_before": 1, "failed_before": 0}
+    ws.save(data)
+    clock = Clock(remote, 0, ("s02", "audio"))
+    report = await wait(ws, remote, "audio", "02", sleep=clock.sleep, clock=clock)
+    assert report.rows == [("02", "failed", "")] and entry(ws, "02")["audio"]["status"] == "failed"
+
+    remote.add_result("s02", "audio", "a2", "2026-10-05 19:00:00")
+    report = await wait(ws, remote, "audio", "02", sleep=clock.sleep, clock=clock)
+    assert entry(ws, "02")["audio"]["status"] == "done"
+
+
 def test_status_reads_only_the_manifest(ws):
     data = ws.load()
     shots = {e["key"]: e for e in data["shots"]}
