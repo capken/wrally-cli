@@ -6,7 +6,7 @@
 
 本地命令行工具（包名 `wrally-cli`，命令叫 `wrally`），把 WorkRally 上「一集短视频」（短番项目 → 剧集 → 场次）的批量操作收进脚本：关键帧 → 视频 → 旁白，最后把合成需要的输入导出给合成脚本。目的是让 Agent 只通过 bash 调 `wrally` 并看到几行摘要，而不是逐镜调用 WorkRally MCP 把上下文撑爆。
 
-它不绑定任何一部片子：版式、字体、阈值、词表都不在这里。每部片子是一个创作项目目录（项目文件 `wrally.yaml` 加各集的工作区），有自己的合成脚本和自己的说明文件。主要的创作项目是《提灯人》（在它自己的目录里，本机路径见 `CLAUDE.local.md`），改了行为要拿它做回归。
+它不绑定任何一部片子：版式、字体、阈值、词表都不在这里。每部片子是一个创作项目目录（项目文件 `wrally.yaml` 加各集的工作区），有自己的合成脚本和自己的说明文件。改了行为要拿一个真实的创作项目做回归（作者用的是哪个、在哪里，见 `CLAUDE.local.md`）。
 
 明确不做：通用 WorkRally SDK；替人选图；剪辑合成（wrally 不调用合成脚本、不解析它的输出，只用 `wrally export` 写一份中性的 `.wrally/export.json`）。
 
@@ -94,7 +94,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 **清单和提示词**
 
 - `defaults`、`rules` 一律用 `ws.settings(data, 名字)` 读，它把项目文件和单集清单合并好；直接读 `data.get("defaults")` 会漏掉项目文件里的值。合并结果只用来读，不要写回清单。
-- 清单顶层和每镜里 wrally 不认识的键（比如《提灯人》的 `assemble`）由 `export` 原样带进 `extra`，wrally 不解释，也不解析里面的路径。认识的键列在 `commands/export.py` 的 `TOP_KEYS`、`SHOT_KEYS`：给清单加新字段时要补进去，否则会被当成 `extra` 带出去。
+- 清单顶层和每镜里 wrally 不认识的键（比如某部片子给自己的合成脚本用的 `assemble`）由 `export` 原样带进 `extra`，wrally 不解释，也不解析里面的路径。认识的键列在 `commands/export.py` 的 `TOP_KEYS`、`SHOT_KEYS`：给清单加新字段时要补进去，否则会被当成 `extra` 带出去。
 - 成片文件的位置是清单顶层的 `output`（默认 `<目录名>.mp4`），用 `ws.output_path(data)` 取；`export` 和 `page` 都用它。
 - `check`、`lint`、`audio gen --redo-failed` 的阈值和词表取自 `rules.load_rules`，不要在命令里再写常数。`rules` 没有缺省值：没写的一项不查。测试里要用规则就在夹具里写 `data["rules"]`。
 - 候选和结果以 asset_id 为主键，任务 ID 只是附属信息。`get_result` 不返回任务 ID；`doing_tasks` 里的 ID 是另一种格式，不要拿来对应。
@@ -141,7 +141,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 **远端不可靠的地方**
 
 - 远端的文本会被 wrally 之外的写入改回旧版（推测是网页端开着旧页面时保存造成的，未证实）。`pull` 出现意外的 `local` 时先弄清原因再 `push`。
-- 旁白可能念到一半就结束，`check` 查不出来（《提灯人》EP4 的 08 镜只念了前半句）。
+- 旁白可能念到一半就结束，`check` 查不出来（真实遇到过：一镜只念了前半句，时长和音高都正常）。
 - `fetch` 取的是最新一条结果，`export` 带出的台词（合成时的字幕）取清单里的 `narration`，两者没有互相校验。wrally 生成的素材靠指纹由 `check` 把关；wrally 之外生成的旁白查不出来。
 - `asset_detail` 对不存在的 ID 静默丢弃，不报错。
 - 在网页上编辑过图片提示词的镜头，远端另有一份富文本副本（`extra.image_prompt_json`），场次生图用的是它，而 `edit_content` 只改纯文本，改不到它。`pull` 标 `web copy differs`，`push` 会列出镜号，`keyframe gen` 报 `stale_web_prompt` 中止。唯一的办法是请用户在网页上把提示词粘贴成和 `prompts/<镜号>.image.md` 一致；不要尝试用接口写这个字段（试过，服务端忽略）。
@@ -149,7 +149,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 
 ## 还没验证或没做的
 
-真实验证都是在《提灯人》的四集上做的（EP3 走过全流程，EP4 用 `new` 建，EP2 用 `pull` 建档后返修）。
+下面说的「真实验证」都是在作者的一个创作项目的四集上做的：一集走过全流程，一集用 `new` 新建，一集用 `pull` 建档后返修。具体是哪部片子、哪几集，见 `CLAUDE.local.md`。
 
 - `new` 真实建过一集（剧集加 13 镜）；给已有剧集加镜头、建场次超时后重跑只有单元测试。
 - 带 `refs` 的画布路径（`canvas_generate_image`）只有单元测试，没有真实提交过。
@@ -158,16 +158,16 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 每镜视频时长 `video_duration` 除单元测试外只真实用过一镜。
 - `McpClient` 的断线重连没有测试。
 - 每镜视频分辨率 `video_resolution`（2026-10-20 加）只有单元测试。
-- `web_copies.json`：四集现有的记录是用 `.wrally/raw/` 里最近一次场次列表补出来的，没有经过真实的 `pull`；`pull`、`push`、生成命令写它只有单元测试。
+- `web_copies.json`：那四集现有的记录是用 `.wrally/raw/` 里最近一次场次列表补出来的，没有经过真实的 `pull`；`pull`、`push`、生成命令写它只有单元测试。
 - `page`：开着的页面自动刷新（定时加载 `.wrally/page.version.js`）、侧栏随滚动高亮、`J`/`K` 跳镜和 `--watch` 没有在真实浏览器里实测；深色模式和窄屏只用无界面 Chrome 看过一眼。
 - `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1（现在会被兜底成一行 `internal_error`、退出码 4）。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
-- 项目文件、`rules`、`export` 和这次拆分之后，调用远端的命令只跑过 `pull`（2026-10-13，四集零改动）；`push` 和三个生成命令还没跑过。离线的 `status`、`lint`、`check`、`page`、`export` 在四集上逐一对比过。
+- 项目文件、`rules`、`export` 和这次拆分之后，调用远端的命令只跑过 `pull`（2026-10-13，那四集零改动）；`push` 和三个生成命令还没跑过。离线的 `status`、`lint`、`check`、`page`、`export` 在那四集上逐一对比过。
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。
 - 后续待办（通用模板、多音色、视频样片、视频超分等）在设计文档「后续待办：通用化」。
 - 没有做：用语音识别核对旁白与台词；指定使用非最新的那条结果。
 - `wrally smoke`（2026-10-31 加）：真实跑过一次（在仓库目录，模型用选项指定）。图像（Seedream-5 Pro）和 5 秒视频（Seedance-2.0 Mini，单图用图像那一步的结果，约 110 秒）通过，这也是画布接口 `gen image`、`gen video` 单图模式第一次真实提交；配音（Seed-Audio-1.5）三次都是远端繁忙，没跑通。传了 `enable_sound=false` 的视频仍有一条有声的音轨（平均 -30.8 dB），所以 smoke 只在说明里写出有无音轨，不算失败。
 - 换参考图地址（`assets.plain_url`）真实遇到过连接超时：现在按 `RETRY_DELAYS` 重试，仍失败报 `NetworkError`；`gen` 在落盘 `submitting` 之前做完这一步（`canvas.prepare`），失败时不留下「可能已受理」的记录。
-- `wrally gen`（2026-10-21 加）：`gen audio` 真实跑过（《菲索测光速》逐句 59 次提交，含 `--no-wait` + `gen fetch`、`--again`、同名换参数出 `-b2`），音色「浑厚 A」约 84 Hz，与场次绑定一致；`gen image`、`gen video`、`gen music` 只真实跑过 `--dry-run` 校验，提交和下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。
+- `wrally gen`（2026-10-21 加）：`gen audio` 真实跑过（一部片子的逐句配音，59 次提交，含 `--no-wait` + `gen fetch`、`--again`、同名换参数出 `-b2`），带参考音色时量出的音高与场次里绑定同一音色的结果一致；`gen image` 和 `gen video` 的单图模式由 `wrally smoke` 真实提交过一次（见 `wrally smoke` 那一条），`gen music` 和视频的首尾帧模式只真实跑过 `--dry-run` 校验，提交和下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。
 
 ## 提交
 

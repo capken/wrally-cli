@@ -96,7 +96,7 @@ def pitch_available() -> bool:
 
 def channel_gap(audio: Path) -> float | None:
     """各声道 RMS 电平（dB）最大值和最小值之差；单声道是 0，量不出来返回 None。
-    生成的旁白偶尔只有一个声道有声音（《提灯人》EP6 的 02：左 -19 dB、右 -61 dB），
+    生成的旁白偶尔只有一个声道有声音（实测过一例：左 -19 dB、右 -61 dB），
     音高和时长都正常，只能这样查。"""
     out = subprocess.run(
         [_tool("ffmpeg"), "-v", "info", "-nostats", "-i", str(audio),
@@ -116,7 +116,7 @@ def channel_gap(audio: Path) -> float | None:
 
 def noise_floor(audio: Path, *, span: float = 0.3) -> float | None:
     """最安静的连续 span 秒的平均电平（dB，每 0.05 秒一帧取 RMS 再平均）。说话的停顿处应当接近无声；
-    带背景音的旁白在这里也有声音（《提灯人》EP6：干净的在 -54 dB 以下，带背景音的 -42～-46 dB）。
+    带背景音的旁白在这里也有声音（实测过一集：干净的在 -54 dB 以下，带背景音的 -42～-46 dB）。
     比 span 还短或量不出来返回 None。"""
     import array
     import math

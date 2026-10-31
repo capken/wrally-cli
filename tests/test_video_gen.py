@@ -271,7 +271,7 @@ async def test_per_shot_duration_overrides_the_default_and_counts_as_an_input(re
 
 
 async def test_per_shot_resolution_overrides_the_default_and_counts_as_an_input(ready):
-    """《提灯人》EP3 的 10 镜三联画细节密：只给这一镜 720p，其他镜头的指纹不受影响。"""
+    """某一镜画面细节密，只给这一镜 720p：其他镜头的指纹不受影响。"""
     ws, remote = ready
     await run(ws, remote)
     before = entry(ws, "02")["video"]["made_from"]
