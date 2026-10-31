@@ -597,7 +597,13 @@ ProjectOpt = Annotated[
     str | None,
     typer.Option("--project", envvar="WRALLY_PROJECT", help="短番项目 ID：结果归到这个项目的媒资库（可选）"),
 ]
-NoWaitOpt = Annotated[bool, typer.Option("--no-wait", help="只提交，不等待和下载；之后用 gen fetch")]
+# 默认就等待并下载；--wait 也收下（和场次生成命令的 --wait 同名，Agent 常顺手加上），效果同默认
+NoWaitOpt = Annotated[
+    bool,
+    typer.Option(
+        "--no-wait/--wait", help="--no-wait 只提交，之后用 gen fetch；默认（或 --wait）提交后等待并下载"
+    ),
+]
 TimeoutOpt = Annotated[float, typer.Option("--timeout", help="等待的最长秒数")]
 AgainOpt = Annotated[bool, typer.Option("--again", help="同样的参数已经提交过也再提交一批")]
 DryRunOpt = Annotated[bool, typer.Option("--dry-run", help="只校验参数、说明会提交什么，不提交")]

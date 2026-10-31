@@ -103,3 +103,15 @@ def test_max_wait_caps_every_timeout(monkeypatch):
     assert cli._limit(1200) == 90 and cli._limit(30) == 30
     monkeypatch.setenv("WRALLY_MAX_WAIT", "abc")
     assert cli._limit(1200) == 1200
+
+
+def test_gen_accepts_wait_as_the_default(monkeypatch):
+    """gen 默认就等待并下载；--wait 不报错、效果同默认，--no-wait 只提交。"""
+    from wrally import cli
+
+    seen = []
+    monkeypatch.setattr(cli, "_gen", lambda kind, params, out, project, no_wait, *rest: seen.append(no_wait))
+    for flags in ([], ["--wait"], ["--no-wait"]):
+        result = CliRunner().invoke(app, ["gen", "video", "推镜", "--model", "m", *flags])
+        assert result.exit_code == 0, result.output
+    assert seen == [False, False, True]

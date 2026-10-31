@@ -40,7 +40,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `verify-picks [--shots]` | 核对清单选图和网页「选用」 | 是 | 否 |
 | `wait <kind>`、`fetch <kind>` | 等任务完成；下载最新结果。`kind` 是 `keyframe`、`video`、`audio` | 是 | 否 |
 | `new --shots 00-11,99 [--name …] [--dry-run]` | 新建剧集和场次并建好清单 | 是，**建远端数据** | 否 |
-| `keyframe gen`、`video gen`、`audio gen` | 生成。都有 `--shots --dry-run --wait --fetch --redo` | 是 | **是** |
+| `keyframe gen`、`video gen`、`audio gen` | 生成。都有 `--shots --dry-run --wait --fetch --redo`；**默认只提交**，要等待和下载加 `--wait --fetch` | 是 | **是** |
 | `login` | 浏览器授权（凭证过期时） | 是 | 否 |
 
 `video gen` 另有 `--force-picks`，`audio gen` 另有 `--redo-failed`（只重做音高超标或上次失败的）。
@@ -107,7 +107,14 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 
 `wait` 超时不代表失败，任务可能还在跑，再 `wait` 一次。`audio gen --wait` 在等待阶段崩溃过一次而任务其实已受理（现在报 `internal_error`、退出码 4）：遇到就用 `wait audio`、`fetch audio` 接上，不要重新提交。
 
-**等待别超过自己执行命令的时限。** `wait` 默认最长等 1200 秒，生成命令的 `--wait` 默认 600 到 1200 秒，而 Agent 执行一条命令往往只允许几分钟，命令被中途杀掉时什么摘要都拿不到。做法：设环境变量 `WRALLY_MAX_WAIT`（秒），比自己的时限短一些，它压住所有命令的 `--timeout`；或者生成时不加 `--wait`，提交后单独跑 `wrally wait <kind> --timeout <秒>`，超时（退出码 1，表里是 `running`）就再跑一次，直到完成后 `fetch`。命令被杀掉也不会弄坏状态，接着 `wait` 即可，不要重新提交。
+**等待别超过自己执行命令的时限。** `wait` 默认最长等 1200 秒，生成命令的等待默认 600 到 1200 秒，而 Agent 执行一条命令往往只允许几分钟，命令被中途杀掉时什么摘要都拿不到。最省事的做法：设环境变量 `WRALLY_MAX_WAIT`（秒），比自己的时限短一些，它压住所有命令的 `--timeout`。也可以把提交和等待分开跑，两组命令的写法不同：
+
+| 命令 | 只提交 | 之后接着等、接着下载 |
+| --- | --- | --- |
+| `keyframe gen`、`video gen`、`audio gen`（一集里的镜头） | 不加 `--wait`（默认就只提交） | `wrally wait <kind> --timeout <秒>`，完成后 `wrally fetch <kind>` |
+| `gen image\|video\|audio\|music`（单独生成） | 加 `--no-wait` | `wrally gen fetch -o <目录> --timeout <秒>` |
+
+超时（退出码 1，表里是 `running`）就再跑一次等待的命令。命令被杀掉也不会弄坏状态，接着等即可，不要重新提交。
 
 ## 单独生成（不用项目和清单）
 
@@ -124,7 +131,7 @@ wrally gen fetch -o out                              # 超时、--no-wait 或下
 
 - `--model` 填 ID 或名称都行；分辨率、宽高比、时长、张数、参考音色数会按模型目录校验，不合法时退出码 2，什么都不提交。
 - 参考图、首尾帧、参考音色都只收**媒资 ID**；本地文件还不能直接传（要先在网页上传入库）。
-- 默认提交后等待并下载；`--no-wait` 只提交。`--project <短番项目ID>`（或环境变量 `WRALLY_PROJECT`）让结果归到那个项目的媒资库，不给也能生成。
+- **默认提交后等待并下载**，和上面一集的生成命令正好相反（那边默认只提交、要加 `--wait --fetch`）。这里不用加 `--wait`（加了也一样）；`--no-wait` 只提交，之后用 `gen fetch` 接上。`--project <短番项目ID>`（或环境变量 `WRALLY_PROJECT`）让结果归到那个项目的媒资库，不给也能生成。
 - 视频默认不生成音效，要音效加 `--sound`（远端接口默认是开的，wrally 一律显式写）。
 - 提交记录在输出目录的 `.wrally-gen.json`。同样的参数再跑会跳过（要再出一批加 `--again`，文件名带 `-b2`）；提交超时的记录停在 `submitting`，再跑会报 `pending_submit`：先去网页确认是否已受理，确认没有再 `--again`。任务失败时表格显示 `failed: <服务端给的原因>`；「现在使用的人比较多」这类是远端繁忙，过会儿用同样的命令再跑即可（整条记录都失败时不挡重跑，不用 `--again`；`--count` 大于 1 只失败一部分时要加 `--again`）。
 - 同样消耗额度：先 `--dry-run`，把模型和份数告诉用户，确认后再提交。
