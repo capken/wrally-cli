@@ -149,4 +149,4 @@ uv run pytest -q                           # 测试，全部离线，用 tests/c
 uv run ruff check . && uv run ruff format .
 ```
 
-代码结构和改代码时要守的约束见 `CLAUDE.md`（`AGENTS.md` 是指向它的链接）。完整的规格（清单字段、每条命令的调用顺序、必须内置的规则与坑、待办）见 `WorkRally 批量命令行工具（wrally）设计文档.md`。
+代码结构和改代码时要守的约束见 `CLAUDE.md`（`AGENTS.md` 是指向它的链接）。
