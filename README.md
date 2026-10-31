@@ -1,6 +1,6 @@
 # wrally
 
-`wrally` 是一个本地命令行工具，把 [WorkRally](https://workrally.qq.com) 上「一集短视频」（短番项目 → 剧集 → 场次）的批量操作收进脚本里完成：关键帧 → 视频 → 旁白 → 检查 → 导出给合成脚本。它主要给能执行终端命令的 AI Agent 用（Claude Code、Codex CLI、Gemini CLI、Cursor 等都行，不绑定任何一家），人在终端里也能直接用。
+`wrally` 是一个本地命令行工具，把 [WorkRally](https://workrally.qq.com) 上「一集短视频」（短番项目 → 剧集 → 场次）的批量操作收进脚本里完成：关键帧 → 视频 → 旁白 → 检查 → 导出给合成脚本。它主要给能执行终端命令的 AI Agent 用（Claude Code、Codex CLI、Gemini CLI、Cursor、WorkBuddy 等都行，不绑定任何一家），人在终端里也能直接用。
 
 ## 解决什么问题
 
@@ -68,11 +68,34 @@ wrally login
 | --- | --- |
 | Claude Code | 挂成 skill：`ln -s "$(pwd)/skills/wrally" ~/.claude/skills/wrally`。之后在任何目录，任务涉及 WorkRally 的剧集、场次、提示词、关键帧、视频、旁白，或目录里有 `episode.yaml`、`wrally.yaml` 时，会自动按它来 |
 | Codex CLI 等读 `AGENTS.md` 的 | 在创作项目的 `AGENTS.md`（或全局的 `~/.codex/AGENTS.md`）里写一句：「WorkRally 的操作一律用 `wrally` 命令，动手前先读 `<wrally-cli 路径>/skills/wrally/SKILL.md`」 |
+| WorkBuddy | 复制成 skill，另外要放开一个沙箱目录，见下文「在 WorkBuddy 里使用」 |
 | Gemini CLI、Cursor 等 | 同理，写进它们各自读的说明文件（`GEMINI.md`、`.cursor/rules/` 等），或直接把 `SKILL.md` 的正文放进去 |
 
 不管哪种 Agent，要点都一样：只通过 bash 调 `wrally`，看退出码和那几行摘要，不要直接调用 WorkRally 的 MCP 工具。
 
 Agent 执行一条命令有时限（通常几分钟），而视频要等十几分钟。设 `WRALLY_MAX_WAIT`（比时限短一些），或者提交时不加 `--wait`，之后反复跑 `wrally wait <kind> --timeout <秒>`，直到不再显示 `running`。命令被中途杀掉也不会弄坏状态，接着 `wait` 即可，不要重新提交。
+
+#### 在 WorkBuddy 里使用
+
+WorkBuddy 桌面端在本机执行命令，skill 格式和上面相同（文件夹加 `SKILL.md`）。和其他 Agent 相比多两处要设：skill 的位置，和沙箱的可写目录。
+
+1. **先在系统终端里装好并登录**（不要在 WorkBuddy 里登录：`wrally login` 要在本机开端口等浏览器回调，沙箱里多半不行）：
+   ```bash
+   uv tool install --python 3.11 --editable ".[pitch]"
+   wrally login
+   ```
+2. **把 skill 复制到 WorkBuddy 的目录**（国内版 `~/.workbuddy/skills/`，海外版 `~/.workbuddy-ai/skills/`）：
+   ```bash
+   cp -R skills/wrally ~/.workbuddy/skills/wrally
+   ```
+   用符号链接挂进去时，WorkBuddy 的 Agent 没有列出这个 skill（原因没确认），所以建议复制。复制的副本不会跟着仓库更新，wrally 升级后要删掉重新复制。
+3. **放开 `~/.config/wrally/` 的写权限**：在 WorkBuddy 的沙箱设置里把它加进额外可写目录（对应 `~/.workbuddy/settings.json` 的 `sandbox.extraAllowWrite`，改文件前先退出 WorkBuddy）。**这一步不能省**：wrally 每次刷新 token 都要写回这个目录里的 `credentials.json`，而服务端每次刷新都会换新的 refresh_token。写不进去的话，旧的已经作废、新的又没存下来，只能重新登录。
+4. **工作区选创作项目目录**（有 `wrally.yaml` 的那个）。wrally 写清单和下载素材都在单集目录里，工作区内的读写不受沙箱限制。
+5. **权限保持默认，不要开「完全访问」**。默认权限下每条命令都要你点确认；生成命令花额度，这道确认正好用得上。
+6. **不要在 WorkBuddy 里接 WorkRally 的连接器**，免得 Agent 绕开 wrally 直接调 MCP。
+7. **等待时长**：没查到 WorkBuddy 一条命令最多能跑多久。等视频时让 Agent 在命令前加 `WRALLY_MAX_WAIT=240`，超时就再 `wrally wait`。
+
+设好后重启 WorkBuddy，在技能列表里能看到 `wrally` 就说明装上了。
 
 ### 2. 准备创作项目
 
