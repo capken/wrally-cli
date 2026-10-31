@@ -9,7 +9,7 @@ from wrally.commands.lint import find_words, lint
 from wrally.errors import PreflightError
 from wrally.rules import core_len
 
-# 《提灯人》项目文件里的两组词，用来测否定写法的识别
+# 一个真实项目文件里的两组词，用来测否定写法的识别
 LIGHT = ("阳光照进", "光束", "阴影退去", "体积光", "光柱")
 FINE_MOTION = ("写字", "书写", "展开", "碰杯", "举杯相碰")
 

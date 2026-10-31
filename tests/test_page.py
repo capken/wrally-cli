@@ -263,7 +263,7 @@ def project_with(ws, tmp_path_factory, names=("ep1", "ep2")):
     from wrally.workspace import Workspace
 
     root = tmp_path_factory.mktemp("project")
-    (root / "wrally.yaml").write_text("title: 提灯人\n", encoding="utf-8")
+    (root / "wrally.yaml").write_text("title: 示例片\n", encoding="utf-8")
     for name in names:
         shutil.copytree(ws.root, root / name)
     return root, [Workspace(root / name) for name in names]
@@ -284,7 +284,7 @@ def test_episode_build_also_builds_the_project_index(ws, tmp_path_factory):
     page.build(ep1)
 
     found = index_data(root)
-    assert found["title"] == "提灯人"
+    assert found["title"] == "示例片"
     # ep2 还没建过页面：总览页顺带把它建出来
     assert [e["name"] for e in found["episodes"]] == ["ep1", "ep2"] and (ep2.root / "page.html").exists()
     first = found["episodes"][0]
