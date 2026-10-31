@@ -128,6 +128,13 @@ async def wait(
             report.timed_out += 1
         elif not p.canvas and key in baseline and p.failed > baseline[key]:
             label = "failed"
+        elif (
+            label == "done"
+            and not p.canvas
+            and (entry.get(kind) or {}).get("status") == "failed"
+            and p.done <= int((entry.get(kind) or {}).get("results_before") or 0)
+        ):
+            label = "failed"  # 远端的「完成」来自以前的结果，这次的任务没出新结果
         report.failed += label == "failed"
         if kind != "keyframe" or "status" in (entry.get(kind) or {}):
             section(entry, kind)["status"] = label

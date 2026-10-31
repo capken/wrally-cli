@@ -90,6 +90,21 @@ async def test_newer_result_replaces_file_and_drops_stale_f0(ws, remote):
     assert (ws.root / audio["file"]).read_bytes() == b"two"
 
 
+async def test_fetch_keeps_failed_when_latest_result_is_the_old_one(ws, remote):
+    remote.add_result("s02", "audio", "a1", "2026-10-05 18:00:00", b"one")
+    await fetch(ws, remote, "audio", "02", http=remote.http())
+    data = ws.load()
+    next(e for e in data["shots"] if e["key"] == "02")["audio"]["status"] = "failed"
+    ws.save(data)
+    report = await fetch(ws, remote, "audio", "02", http=remote.http())
+    assert report.rows == [("02", "failed", ".wrally/audio/02.wav")] and report.failed == 1
+    assert entry(ws, "02")["audio"]["status"] == "failed"
+
+    remote.add_result("s02", "audio", "a2", "2026-10-05 19:00:00", b"two")
+    await fetch(ws, remote, "audio", "02", http=remote.http())
+    assert entry(ws, "02")["audio"]["status"] == "done"
+
+
 async def test_running_and_failed_shots_are_not_downloaded(ws, remote):
     remote.add_result("s01", "video", "w1", "2026-10-05 18:00:00")
     remote.results[("s01", "video")]["doing"] = 1

@@ -78,6 +78,10 @@ async def _media(ws, client, kind, entries, results, raw_assets, http) -> FetchR
         latest = rs.latest
         current = sec.get("file")
         if sec.get("asset_id") == latest.asset_id and current and (ws.root / current).exists():
+            if sec.get("status") == "failed":  # 这次的任务失败了，最新结果还是上一条，不能记成完成
+                report.failed += 1
+                report.rows.append((key, "failed", str(current)))
+                continue
             section(entry, kind)["status"] = "done"
             report.up_to_date += 1
             report.rows.append((key, "done", str(current)))
