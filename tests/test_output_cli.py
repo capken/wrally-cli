@@ -59,3 +59,47 @@ def test_dump_public_has_no_tokens():
         resource="m", access_token="SECRET-AT", refresh_token="SECRET-RT", expires_at=0,
     )  # fmt: skip
     assert "SECRET" not in json.dumps(auth.dump_public(creds))
+
+
+def test_json_error_goes_to_stdout_as_one_json_line(tmp_path):
+    result = CliRunner().invoke(app, ["status", "--json", "-C", str(tmp_path)])
+    assert result.exit_code == 2
+    assert json.loads(result.stdout) == {"error": "no_manifest", "hint": "(run: wrally pull)", "exit_code": 2}
+    assert "error: no_manifest" in result.stderr
+
+
+def test_unexpected_error_is_one_line_exit_4_with_traceback_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("WRALLY_CONFIG_DIR", str(tmp_path / "cfg"))
+
+    def boom(ws):
+        raise ValueError("bad https://x.test/a?sig=1")
+
+    monkeypatch.setattr("wrally.cli.status_cmd.status", boom)
+    (tmp_path / "episode.yaml").write_text("shots: []\n")
+    result = CliRunner().invoke(app, ["status", "--json", "-C", str(tmp_path)])
+    assert result.exit_code == 4
+    assert json.loads(result.stdout)["error"] == "internal_error"
+    assert "Traceback" not in result.output
+    crash = (tmp_path / "cfg" / "last-crash.txt").read_text()
+    assert "ValueError" in crash and "sig=1" not in crash
+
+
+def test_wrally_error_inside_exception_group_keeps_its_exit_code(tmp_path, monkeypatch):
+    from wrally.errors import AuthError
+
+    def boom(ws):
+        raise ExceptionGroup("tg", [AuthError("login_expired", "(run: wrally login)")])
+
+    monkeypatch.setattr("wrally.cli.status_cmd.status", boom)
+    (tmp_path / "episode.yaml").write_text("shots: []\n")
+    result = CliRunner().invoke(app, ["status", "-C", str(tmp_path)])
+    assert result.exit_code == 3 and "error: login_expired" in result.stderr
+
+
+def test_max_wait_caps_every_timeout(monkeypatch):
+    from wrally import cli
+
+    monkeypatch.setenv("WRALLY_MAX_WAIT", "90")
+    assert cli._limit(1200) == 90 and cli._limit(30) == 30
+    monkeypatch.setenv("WRALLY_MAX_WAIT", "abc")
+    assert cli._limit(1200) == 1200

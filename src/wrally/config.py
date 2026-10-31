@@ -23,3 +23,12 @@ def concurrency() -> int:
         return max(1, int(os.environ.get("WRALLY_CONCURRENCY", "4")))
     except ValueError:
         return 4
+
+
+def max_wait() -> float | None:
+    """等待的上限（秒），压住所有命令的 --timeout。给执行时限较短的 Agent 用：设成比工具时限略短。"""
+    try:
+        value = float(os.environ.get("WRALLY_MAX_WAIT", ""))
+    except ValueError:
+        return None
+    return value if value > 0 else None

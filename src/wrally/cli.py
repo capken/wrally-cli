@@ -1,13 +1,17 @@
-"""命令行入口。只有这一层与人或 Claude 交互。"""
+"""命令行入口。只有这一层与人或 Agent 交互。"""
 
 import functools
+import json
+import re
 import sys
+import traceback
 import webbrowser
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
 import anyio
+import click
 import httpx2
 import typer
 
@@ -30,8 +34,8 @@ from wrally.commands import status as status_cmd
 from wrally.commands import verify as verify_cmd
 from wrally.commands import video as video_cmd
 from wrally.commands import wait as wait_cmd
-from wrally.config import mcp_url
-from wrally.errors import PreflightError, WrallyError
+from wrally.config import config_dir, max_wait, mcp_url
+from wrally.errors import INTERNAL_EXIT_CODE, PreflightError, WrallyError
 from wrally.transport import auth
 from wrally.transport.client import McpClient
 from wrally.workspace import Workspace
@@ -52,18 +56,65 @@ def _log(verbose: bool) -> Callable[[str], None] | None:
     return (lambda line: print(line, file=sys.stderr)) if verbose else None
 
 
+def _fail(code: str, hint: str, exit_code: int, as_json: bool) -> None:
+    """错误收成一行写到标准错误；--json 时标准输出再给一行 JSON，解析标准输出的调用方也拿得到。"""
+    print(f"error: {code}  {hint}".rstrip(), file=sys.stderr)
+    if as_json:
+        print(json.dumps({"error": code, "hint": hint, "exit_code": exit_code}, ensure_ascii=False))
+    raise typer.Exit(exit_code)
+
+
+def _find_wrally_error(exc: BaseException) -> WrallyError | None:
+    """WrallyError 可能被包在 ExceptionGroup 里（任务组、并发执行）。"""
+    if isinstance(exc, WrallyError):
+        return exc
+    if isinstance(exc, BaseExceptionGroup):
+        for inner in exc.exceptions:
+            if found := _find_wrally_error(inner):
+                return found
+    return None
+
+
+def _save_crash(exc: BaseException) -> Path | None:
+    """追踪栈写到凭证目录（不在工作区，不会被提交）；终端只给路径。"""
+    try:
+        path = config_dir() / "last-crash.txt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = "".join(traceback.format_exception(exc))
+        path.write_text(re.sub(r"https?://\S+", "<url>", text), encoding="utf-8")
+        return path
+    except OSError:
+        return None
+
+
+# typer 自己的退出和用法错误、Ctrl-C 照常往外抛
+_PASS_THROUGH = (typer.Exit, typer.Abort, click.ClickException, SystemExit, KeyboardInterrupt)
+
+
 def handle_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """把错误收成一行错误码，并转换成约定的退出码。"""
+    """把错误收成一行错误码，并转换成约定的退出码；意外的异常也不打追踪栈，退出码 4。"""
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        as_json = bool(kwargs.get("as_json"))
         try:
             return fn(*args, **kwargs)
-        except WrallyError as e:
-            print(f"error: {e.code}  {e.hint}".rstrip(), file=sys.stderr)
-            raise typer.Exit(e.exit_code) from e
+        except _PASS_THROUGH:
+            raise
+        except BaseException as e:  # noqa: BLE001  CancelledError、ExceptionGroup 也在这里收
+            if found := _find_wrally_error(e):
+                _fail(found.code, found.hint, found.exit_code, as_json)
+            path = _save_crash(e)
+            hint = f"{type(e).__name__} (traceback: {path})" if path else type(e).__name__
+            _fail("internal_error", hint, INTERNAL_EXIT_CODE, as_json)
 
     return wrapper
+
+
+def _limit(timeout: float) -> float:
+    """WRALLY_MAX_WAIT 压住所有等待时长。"""
+    cap = max_wait()
+    return min(timeout, cap) if cap else timeout
 
 
 def refreshes_page(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -240,7 +291,7 @@ def wait(
     """等待任务完成，只在结束时输出一次结果。"""
     ws = Workspace(directory)
     kind = _kind(kind)
-    report = _remote(verbose, lambda c: wait_cmd.wait(ws, c, kind, shots, timeout=timeout))
+    report = _remote(verbose, lambda c: wait_cmd.wait(ws, c, kind, shots, timeout=_limit(timeout)))
     _emit(report.summary, wait_cmd.HEADERS, report.rows, as_json, details="episode.yaml")
     if report.failed or report.timed_out:
         raise typer.Exit(1)
@@ -298,7 +349,7 @@ def keyframe_gen(
         waited = fetched = None
         if report.submitted and (wait_ or fetch_):
             done = ",".join(report.submitted)
-            waited = await wait_cmd.wait(ws, client, "keyframe", done, timeout=timeout)
+            waited = await wait_cmd.wait(ws, client, "keyframe", done, timeout=_limit(timeout))
             if fetch_:
                 fetched = await fetch_cmd.fetch(ws, client, "keyframe", done)
         return report, waited, fetched
@@ -379,7 +430,7 @@ def video_gen(
         waited = fetched = None
         if report.submitted and (wait_ or fetch_):
             done = ",".join(report.submitted)
-            waited = await wait_cmd.wait(ws, client, "video", done, timeout=timeout)
+            waited = await wait_cmd.wait(ws, client, "video", done, timeout=_limit(timeout))
             if fetch_:
                 fetched = await fetch_cmd.fetch(ws, client, "video", done)
         return report, waited, fetched
@@ -430,7 +481,7 @@ def audio_gen(
         waited = fetched = None
         if report.submitted and (wait_ or fetch_):
             done = ",".join(report.submitted)
-            waited = await wait_cmd.wait(ws, client, "audio", done, timeout=timeout)
+            waited = await wait_cmd.wait(ws, client, "audio", done, timeout=_limit(timeout))
             if fetch_:
                 fetched = await fetch_cmd.fetch(ws, client, "audio", done)
         return report, waited, fetched
@@ -568,7 +619,7 @@ def _gen(kind: str, params: dict, out: Path, project: str | None, no_wait: bool,
         )
         if dry_run or no_wait or not report.job_ids:
             return report, None
-        return report, await gen_cmd.fetch(client, out, job_ids=report.job_ids, timeout=timeout)
+        return report, await gen_cmd.fetch(client, out, job_ids=report.job_ids, timeout=_limit(timeout))
 
     report, fetched = _remote(verbose, work)
     if fetched is None:
@@ -715,7 +766,7 @@ def gen_fetch(
     verbose: VerboseOpt = False,
 ) -> None:
     """等待输出目录里提交过的任务并下载结果；提交超时、--no-wait 或下载中断后用它接上。"""
-    report = _remote(verbose, lambda client: gen_cmd.fetch(client, out, job_ids=job, timeout=timeout))
+    report = _remote(verbose, lambda client: gen_cmd.fetch(client, out, job_ids=job, timeout=_limit(timeout)))
     _emit(report.summary, gen_cmd.HEADERS, report.rows, as_json, details=str(out / gen_cmd.LOG))
     if report.failed or report.timed_out:
         raise typer.Exit(1)

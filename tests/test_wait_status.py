@@ -60,6 +60,14 @@ async def test_wait_times_out_and_reports_still_running(ws, remote):
     assert entry(ws, "02")["video"]["status"] == "running"
 
 
+async def test_wait_never_sleeps_past_timeout(ws, remote):
+    """--timeout 比首次等待（视频 120 秒）还短时，按 --timeout 截断，不多睡。"""
+    remote.results[("s02", "video")] = {"doing": 1, "failed": 0, "results": []}
+    clock = Clock(remote, 10**9)
+    report = await wait(ws, remote, "video", "02", timeout=50, sleep=clock.sleep, clock=clock)
+    assert clock.sleeps == [50] and report.timed_out == 1
+
+
 async def test_new_failure_is_reported_even_when_old_results_exist(ws, remote):
     remote.add_result("s02", "video", "v1", "2026-10-05 18:00:00")
     remote.results[("s02", "video")]["doing"] = 1

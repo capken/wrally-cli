@@ -1,15 +1,15 @@
 # 开一部新片子：项目目录、清单和合成
 
-目录：[目录结构](#目录结构) · [项目文件 wrally.yaml](#项目文件-wrallyyaml) · [建第一集](#建第一集) · [清单 episode.yaml](#清单-episodeyaml) · [rules](#rules) · [合成：export.json](#合成exportjson) · [给项目写 CLAUDE.md](#给项目写-claudemd)
+目录：[目录结构](#目录结构) · [项目文件 wrally.yaml](#项目文件-wrallyyaml) · [建第一集](#建第一集) · [清单 episode.yaml](#清单-episodeyaml) · [rules](#rules) · [合成：export.json](#合成exportjson) · [给项目写说明文件](#给项目写说明文件)
 
-wrally 不绑定任何一部片子。一部片子是一个**创作项目目录**，放在 wrally-cli 仓库之外；模型、音色、画风、检查阈值、合成版式都写在这个目录里。本机现成的例子是《提灯人》：`/Users/allenzheng/codes/lantern-bearer`，可以照着它的 `wrally.yaml` 和 `CLAUDE.md` 写。
+wrally 不绑定任何一部片子。一部片子是一个**创作项目目录**，放在 wrally-cli 仓库之外；模型、音色、画风、检查阈值、合成版式都写在这个目录里。本机如果已经有别的创作项目（目录里有 `wrally.yaml`），可以照着它的 `wrally.yaml` 和说明文件写；没有就按下文从头写。
 
 ## 目录结构
 
 ```
 <项目>/
   wrally.yaml        # 项目文件：各集共用的设置。wrally 只读它，不改它
-  CLAUDE.md          # 这部片子的制作规则、模型、合成方法
+  CLAUDE.md          # 项目说明文件（或 AGENTS.md 等）：这部片子的制作规则、模型、合成方法
   styles/  assets/   # 各集共用的公共文本、配乐等
   index.html         # 项目总览页，wrally 生成
   ep1/               # 一集一个子目录（名字随意，有 episode.yaml 就算一集）
@@ -132,9 +132,9 @@ wrally 不做合成，也不调用合成脚本。`wrally export` 写出 `.wrally
 
 《提灯人》的 `toolkit/tideng_assemble.py` 是一个读这份文件的完整例子（ffmpeg 拼接、字幕、片名、配乐）。它的版式和参数是那部片子的，新片子可以参考结构，不要原样套用。
 
-## 给项目写 CLAUDE.md
+## 给项目写说明文件
 
-新项目建好后给它写一份 `CLAUDE.md`，以后的会话靠它知道这部片子的规矩。至少写：
+新项目建好后给它写一份说明文件，以后的会话靠它知道这部片子的规矩。文件名按所用的 Agent 定：Claude Code 读 `CLAUDE.md`，Codex 等读 `AGENTS.md`；几种 Agent 都用的话写一份，另一个名字做成指向它的符号链接。至少写：
 
 - 所有 WorkRally 操作都用 `wrally`，不直接调 WorkRally MCP 工具。
 - 用户指定的模型、音色及其 ID（连同是哪天核对的）。
