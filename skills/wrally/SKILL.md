@@ -41,6 +41,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `wait <kind>`、`fetch <kind>` | 等任务完成；下载最新结果。`kind` 是 `keyframe`、`video`、`audio` | 是 | 否 |
 | `new --shots 00-11,99 [--name …] [--dry-run]` | 新建剧集和场次并建好清单 | 是，**建远端数据** | 否 |
 | `keyframe gen`、`video gen`、`audio gen` | 生成。都有 `--shots --dry-run --wait --fetch --redo`；**默认只提交**，要等待和下载加 `--wait --fetch` | 是 | **是** |
+| `smoke [--only …] [--resume] [--dry-run]` | 真实调用一遍：依次生成图像、配音、5 秒视频并检查文件 | 是 | **是** |
 | `login` | 浏览器授权（凭证过期时） | 是 | 否 |
 
 `video gen` 另有 `--force-picks`，`audio gen` 另有 `--redo-failed`（只重做音高超标或上次失败的）。
@@ -113,6 +114,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | --- | --- | --- |
 | `keyframe gen`、`video gen`、`audio gen`（一集里的镜头） | 不加 `--wait`（默认就只提交） | `wrally wait <kind> --timeout <秒>`，完成后 `wrally fetch <kind>` |
 | `gen image\|video\|audio\|music`（单独生成） | 加 `--no-wait` | `wrally gen fetch -o <目录> --timeout <秒>` |
+| `smoke`（接口测试） | 不能只提交；`--timeout` 或 `WRALLY_MAX_WAIT` 到点就停 | `wrally smoke --resume` |
 
 超时（退出码 1，表里是 `running`）就再跑一次等待的命令。命令被杀掉也不会弄坏状态，接着等即可，不要重新提交。
 
@@ -135,6 +137,25 @@ wrally gen fetch -o out                              # 超时、--no-wait 或下
 - 视频默认不生成音效，要音效加 `--sound`（远端接口默认是开的，wrally 一律显式写）。
 - 提交记录在输出目录的 `.wrally-gen.json`。同样的参数再跑会跳过（要再出一批加 `--again`，文件名带 `-b2`）；提交超时的记录停在 `submitting`，再跑会报 `pending_submit`：先去网页确认是否已受理，确认没有再 `--again`。任务失败时表格显示 `failed: <服务端给的原因>`；「现在使用的人比较多」这类是远端繁忙，过会儿用同样的命令再跑即可（整条记录都失败时不挡重跑，不用 `--again`；`--count` 大于 1 只失败一部分时要加 `--again`）。
 - 同样消耗额度：先 `--dry-run`，把模型和份数告诉用户，确认后再提交。
+
+## 测试接口是否可用（`wrally smoke`）
+
+用户想确认 WorkRally 的生成接口能不能用、某个模型能不能跑通时，用 `wrally smoke`。它依次提交三个最小的任务并检查下载的文件：一张图（模型支持的最低分辨率）、一段配音（项目设了 `voice_asset` 时带上参考音色）、一段 5 秒视频（最低分辨率，不带音效，用前一步生成的图当单图；图像失败时改用纯文字）。
+
+```
+wrally smoke --dry-run                     # 列出三步的模型和参数，不提交
+wrally smoke                               # 依次跑图像 → 配音 → 视频
+wrally smoke --resume                      # 接着最近一次运行：已提交的不重复提交
+wrally smoke --only image,audio            # 只跑其中几步
+wrally smoke --video-model "Seedance-2.0 Mini" --dry-run   # 换模型
+```
+
+- 模型默认取 `wrally.yaml` 和清单合并后的 `defaults.<kind>.model`，可用 `--image-model`、`--audio-model`、`--video-model` 覆盖；都没有时报 `missing_model`。视频模型没有 5 秒选项时报 `bad_duration`。这些都在提交任何任务前检查，退出码 2。
+- 每次运行在当前目录建 `.wrally-smoke/<时间戳>/`，里面有下载的 `image.*`、`audio.*`、`video.mp4`，计划和进度在 `smoke.json`，提交记录是 `.wrally-gen.json`（和 `wrally gen` 相同）。
+- 检查：图像要读得出宽高，配音要有时长，视频要有画面且时长在 5±0.5 秒；不通过显示 `failed: check`。服务端拒绝某一步（`failed: <错误码>`）不影响后面的步骤。
+- 某一步失败（比如「现在使用的人比较多」）时，过会儿 `wrally smoke --resume` 会只重新提交失败的那一步，失败的任务没有扣额度。
+- 等待超时时，这一步显示 `running`，后面的显示 `not started`，退出码 1；用 `wrally smoke --resume` 接上，不要不加 `--resume` 重跑（那会新开一次运行，重新提交三个任务）。提交时网络超时会在 `--resume` 时报 `pending_submit`：先去网页确认任务是否已受理，确认没有再不加 `--resume` 新开一次。
+- 消耗真实额度：先 `--dry-run`，把三步的模型告诉用户，确认后再跑。
 
 ## 更多
 

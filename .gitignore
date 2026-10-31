@@ -1,5 +1,6 @@
 # 工作区下载物、抽帧图、报告和原始返回（含签名地址与提示词），不提交
 .wrally/
+.wrally-smoke/
 
 # 凭证
 token.json

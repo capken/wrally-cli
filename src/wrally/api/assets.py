@@ -8,6 +8,7 @@ import httpx2
 from pydantic import BaseModel, Field
 
 from wrally.config import concurrency
+from wrally.errors import NetworkError
 from wrally.transport.client import RETRY_DELAYS, McpClient
 
 BATCH = 50  # asset_detail 一次最多 50 个
@@ -67,8 +68,21 @@ async def asset_details(
 
 
 async def plain_url(http: httpx2.AsyncClient, asset: Asset) -> str:
-    """媒资的固定地址：asset_detail 给的是短链接，跳转后去掉查询串就是场次配置里存的那种地址。"""
-    url = asset.url
+    """媒资的固定地址：asset_detail 给的是短链接，跳转后去掉查询串就是场次配置里存的那种地址。
+
+    只读请求，连不上时按 RETRY_DELAYS 重试；仍然不行报 NetworkError（退出码 3），不当成意外错误。
+    """
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            return await _follow(http, asset.url)
+        except httpx2.TransportError as e:
+            if delay is None:
+                raise NetworkError(hint=f"(asset {asset.asset_id}: {type(e).__name__})") from e
+            await anyio.sleep(delay)
+    raise AssertionError("unreachable")
+
+
+async def _follow(http: httpx2.AsyncClient, url: str) -> str:
     for _ in range(5):
         async with http.stream("GET", url) as r:
             if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("location"):

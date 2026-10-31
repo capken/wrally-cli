@@ -1,6 +1,7 @@
 """画布生成：不依赖项目、剧集和场次的生图、生视频、生音频和生音乐。
 
-提交只发一次（retry=False），返回任务 ID；结果用 image.canvas_task 查询，用 assets.download_assets 下载。
+先 prepare 组装请求（换地址等只读调用），再 submit 只发一次（retry=False），返回任务 ID。
+结果用 image.canvas_task 查询，用 assets.download_assets 下载。
 参考图要传固定地址：由媒资 ID 经 asset_details + plain_url 换得，地址不出本模块。
 """
 
@@ -108,16 +109,24 @@ def _task_ids(data: dict) -> list[str]:
     return [str(t) for t in data.get("task_ids") or []]
 
 
-async def submit(
+@dataclass
+class Request:
+    """组装好的一次提交：工具名和参数。参数里可能有固定地址，不落盘、不打印。"""
+
+    kind: str
+    tool: str
+    args: dict = field(repr=False)
+
+
+async def prepare(
     client: McpClient,
     kind: str,
     params: dict,
     *,
     project_id: str | None = None,
-    raw_path: Path | None = None,
     http: httpx2.AsyncClient | None = None,
-) -> list[str]:
-    """提交一次生成，返回任务 ID（每个产物一个）。不自动重试。
+) -> Request:
+    """把参数组装成提交请求；参考图、首尾帧在这里换成固定地址。只读，失败了也没有提交任何东西。
 
     params 是 commands/gen.py 整理好的参数：prompt、model、count，以及各类自己的
     aspect、resolution、duration、mode、image、last、sound、refs、voices、lyrics。
@@ -165,5 +174,10 @@ async def submit(
             args["lyrics"] = lyrics
     else:
         raise ValueError(kind)
-    data = await client.call(tool, args, raw_path=raw_path, retry=False)
+    return Request(kind, tool, args)
+
+
+async def submit(client: McpClient, request: Request, *, raw_path: Path | None = None) -> list[str]:
+    """提交一次生成，返回任务 ID（每个产物一个）。不自动重试。"""
+    data = await client.call(request.tool, request.args, raw_path=raw_path, retry=False)
     return _task_ids(data)

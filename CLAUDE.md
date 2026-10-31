@@ -57,7 +57,7 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 
 不涉及远端的辅助模块：`media.py`（图像比对、抽帧、音高）、`output.py`（表格和输出预算）。
 
-命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
+命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
 
 ## 写任何命令都要满足的约束
 
@@ -127,9 +127,16 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 走画布接口（`canvas_generate_image|video|audio`），不碰项目、剧集、场次，也不用清单；状态是输出目录里的 `.wrally-gen.json`（每次提交一条记录，先落盘 `submitting` 再提交，受理后写任务 ID）。
 - 同参数跳过靠 `gen.fingerprint`（kind、模型 ID、全部参数和 `--project`，不含 `--name`）。`NetworkError` 时记录停在 `submitting`、再跑报 `pending_submit`；`ToolError`（服务端明确拒绝）记为 `failed`，可以直接重跑。
 - 模型、分辨率、时长等不写死，每次从 `canvas_*_model_list` / `canvas_video_provider_config` 取再校验。
-- 参考图和首尾帧要传固定地址（`asset_details` + `plain_url`，在 `api/canvas.py` 里换，不出接口层）；参考音频 `ref_audios` 直接收媒资 ID。
+- 参考图和首尾帧要传固定地址（`asset_details` + `plain_url`，在 `api/canvas.py` 的 `prepare` 里换，不出接口层；`gen` 先 `prepare` 再落盘 `submitting`，最后 `submit`）；参考音频 `ref_audios` 直接收媒资 ID。
 - `canvas_generate_video` 的 `enable_sound` 远端默认 true，`submit` 一律显式写。
 - 结果用 `image.canvas_task` 查（`canvas_get_task` 返回 `status` 和 `assets`，音频也一样，2026-10-21 用场次旁白任务 ID 真实查过），下载复用 `download_assets`。
+
+**接口测试 `wrally smoke`**
+
+- 依次跑图像 → 配音 → 视频，每步调 `gen.gen` 和 `gen.fetch`，不另写提交逻辑；参数在提交任何任务前用 `gen.validate` 全部校验。视频固定 5 秒、最低分辨率、`sound=False`，单图用图像那一步的媒资 ID，图像失败时退回纯文字。
+- 每次运行一个目录 `.wrally-smoke/<时间戳>/`（相对当前目录），三步的参数先写进 `smoke.json`；`--resume` 按这份计划接着做，已提交的步骤靠记下的 `job_id` 和 gen 的参数指纹不会重复提交。
+- 模型取 `ws.settings` 合并后的 `defaults.<kind>.model`（当前目录可以是项目目录或单集目录），画布接口和场次接口的模型 ID 是同一组（2026-10-31 用 `wrally models` 核对过）。
+- 文件检查用 `media.probe`（ffprobe 的时长、宽高、有无音轨）；视频时长允许 ±0.5 秒。
 
 **远端不可靠的地方**
 
@@ -158,6 +165,8 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。
 - 后续待办（通用模板、多音色、视频样片、视频超分等）在设计文档「后续待办：通用化」。
 - 没有做：用语音识别核对旁白与台词；指定使用非最新的那条结果。
+- `wrally smoke`（2026-10-31 加）：真实跑过一次（在仓库目录，模型用选项指定）。图像（Seedream-5 Pro）和 5 秒视频（Seedance-2.0 Mini，单图用图像那一步的结果，约 110 秒）通过，这也是画布接口 `gen image`、`gen video` 单图模式第一次真实提交；配音（Seed-Audio-1.5）三次都是远端繁忙，没跑通。传了 `enable_sound=false` 的视频仍有一条有声的音轨（平均 -30.8 dB），所以 smoke 只在说明里写出有无音轨，不算失败。
+- 换参考图地址（`assets.plain_url`）真实遇到过连接超时：现在按 `RETRY_DELAYS` 重试，仍失败报 `NetworkError`；`gen` 在落盘 `submitting` 之前做完这一步（`canvas.prepare`），失败时不留下「可能已受理」的记录。
 - `wrally gen`（2026-10-21 加）：`gen audio` 真实跑过（《菲索测光速》逐句 59 次提交，含 `--no-wait` + `gen fetch`、`--again`、同名换参数出 `-b2`），音色「浑厚 A」约 84 Hz，与场次绑定一致；`gen image`、`gen video`、`gen music` 只真实跑过 `--dry-run` 校验，提交和下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。
 
 ## 提交

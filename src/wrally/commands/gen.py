@@ -79,7 +79,7 @@ def _files_for(job: dict) -> list[str]:
 # ---------- 校验 ----------
 
 
-def _check(kind: str, model: canvas.Model, params: dict) -> None:
+def validate(kind: str, model: canvas.Model, params: dict) -> None:
     def bad(what: str, value: object, allowed: list) -> None:
         shown = ", ".join(str(a) for a in allowed)
         raise PreflightError(f"bad_{what}", f"({model.name}: {value}; allowed: {shown})")
@@ -132,7 +132,7 @@ async def gen(
         raise PreflightError("missing_prompt", "(give PROMPT or --prompt-file)")
     model = canvas.pick_model(await canvas.models(client, kind), params["model"], kind)
     params = params | {"model": model.id}
-    _check(kind, model, params)
+    validate(kind, model, params)
     fp = fingerprint(kind, params, project_id)
     jobs = load_log(out)
     same = [j for j in jobs if j["fp"] == fp]
@@ -155,6 +155,8 @@ async def gen(
             f"dry run: would submit 1 {kind} job, {params.get('count', 1)} result(s) with {model.name}"
         )
         return report
+    # 先换好参考图地址再落盘 submitting：这一步失败时什么都没提交，不该留下「可能已受理」的记录
+    request = await canvas.prepare(client, kind, params, project_id=project_id, http=http)
     job = {
         "id": f"{len(jobs) + 1:03d}",
         "fp": fp,
@@ -171,14 +173,7 @@ async def gen(
     jobs.append(job)
     save_log(out, jobs)  # 先落盘再提交：超时后能看出来这批可能已受理
     try:
-        task_ids = await canvas.submit(
-            client,
-            kind,
-            params,
-            project_id=project_id,
-            raw_path=out / RAW / f"{job['id']}-submit.json",
-            http=http,
-        )
+        task_ids = await canvas.submit(client, request, raw_path=out / RAW / f"{job['id']}-submit.json")
     except NetworkError:
         raise  # 不知道服务端是否已受理：记录停在 submitting
     except WrallyError:
