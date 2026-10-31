@@ -106,12 +106,12 @@ async def wait(
         elif isinstance(p, Progress) and p.state == "running":
             baseline[key] = p.failed  # 之后失败数增加，说明这次的任务失败了
     if running():
-        await sleep(INITIAL[kind])
+        await sleep(min(INITIAL[kind], max(0.0, timeout - (clock() - started))))  # 不睡过 --timeout
         while True:
             await poll(running())
             if not running() or clock() - started >= timeout:
                 break
-            await sleep(INTERVAL[kind])
+            await sleep(min(INTERVAL[kind], timeout - (clock() - started)))
 
     report = WaitReport(kind, elapsed=clock() - started)
     for entry in entries:

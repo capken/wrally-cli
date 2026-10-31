@@ -18,7 +18,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | 都没有，只想单独生成几个文件 | 不需要项目 | 用 `wrally gen`，见下文「单独生成」 |
 | 都没有，要做一集 | 还没建项目 | 读 `references/project-setup.md` |
 
-先读这个目录里的 `CLAUDE.md`（如果有）。**片子专属的东西都在那里**：用哪些模型和音色、制作规则、怎么合成。这个 skill 只讲工具本身，两边冲突时以项目的 `CLAUDE.md` 为准。
+先读这个目录里的项目说明文件（`CLAUDE.md`、`AGENTS.md` 或你所用 Agent 约定的同类文件，有哪个读哪个）。**片子专属的东西都在那里**：用哪些模型和音色、制作规则、怎么合成。这份说明只讲工具本身，两边冲突时以项目说明文件为准。
 
 状态全在文件里，不靠对话记忆：`episode.yaml`（清单：每镜的引用和进度）、`prompts/`（每镜独有的提示词）、`.wrally/`（下载物和报告）。接手一集时先 `wrally status`。
 
@@ -55,7 +55,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 4. **视频**：`wrally video gen --dry-run` → 确认 → `wrally video gen --wait --fetch`。
 5. **旁白**：`wrally audio gen --dry-run` → 确认 → `wrally audio gen --wait --fetch`。
 6. **检查**：`wrally check`，只看有警告的镜头；需要看画面时读 `.wrally/sheets/<镜号>.jpg`（小图）。返修就改提示词或台词，重跑对应的 `gen`，用 `--shots` 限定范围。
-7. **合成**：`wrally export`，然后运行这部片子自己的合成脚本（见项目的 `CLAUDE.md`），最后 `wrally page` 让进度网页带上成片。
+7. **合成**：`wrally export`，然后运行这部片子自己的合成脚本（见项目说明文件），最后 `wrally page` 让进度网页带上成片。
 
 ## 提示词怎么写
 
@@ -81,7 +81,9 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 
 ## 读懂输出
 
-退出码：`0` 全部成功；`1` 部分镜头失败或等待超时，其余已完成；`2` 前置检查没过，什么都没提交；`3` 鉴权或网络错误。
+退出码：`0` 全部成功；`1` 部分镜头失败或等待超时，其余已完成；`2` 前置检查没过，什么都没提交；`3` 鉴权或网络错误；`4` wrally 自身的意外错误。
+
+出错时标准错误里有一行 `error: <错误码>  <提示>`；带 `--json` 时标准输出另有一行 `{"error": …, "hint": …, "exit_code": …}`。
 
 | 看到 | 意思和做法 |
 | --- | --- |
@@ -92,9 +94,10 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `no_manifest` | 当前目录不是单集目录。项目目录下加 `-C <单集目录>`；全新的目录先 `pull` 或 `new` |
 | `check` 报 `… was made from different …` | 素材是用旧的输入做的（台词或提示词改过而没重做）。重跑对应的 `gen` |
 | `unpushed_prompts` | 本地提示词和远端不一致，`keyframe gen`、`video gen` 不肯提交。先 `wrally push` |
-| `login_expired`、`auth_failed`，退出码 3 | `wrally login`（会开浏览器，需要用户操作） |
+| `login_expired`、`auth_failed`，退出码 3 | `wrally login`（会开浏览器，需要用户操作；浏览器授权后跳回本机 `127.0.0.1` 的端口，所以要在用户自己的电脑上跑，云端沙箱里跑不通） |
 | `connect_failed`、`network_error`，退出码 3 | 网络问题，稍后重试；如果是在提交生成之后才断的，按上面「提交超时不要重试」处理 |
 | `note: pitch not checked` | 没装量音高用的 librosa，其余检查照常 |
+| `internal_error`，退出码 4 | wrally 自己的问题，追踪栈在凭证目录的 `last-crash.txt`（默认 `~/.config/wrally/`）。告诉用户，不要绕过 wrally 直接调接口。如果是提交之后出的错，任务可能已受理：先 `wait`、`status` 看状态，不要重新提交 |
 
 `check` 查不出来的两件事：旁白可能念到一半就结束（时长明显偏短的要听一遍或用语音识别核对）；wrally 之外生成的旁白没有指纹，台词改了它不会报过期。
 
@@ -102,7 +105,9 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 
 旁白偶尔混进背景音乐或环境声。设了 `noise_floor_max`（负的 dB，如 -50）时 `check` 量最安静的连续 0.3 秒的电平：说话的停顿处应当接近无声，带背景音的会报 `noise floor …dB`，`--redo-failed` 同样会重做。同一句台词重做几次都带背景音时，改写台词往往比再生成管用。
 
-`wait` 超时不代表失败，任务可能还在跑，再 `wait` 一次。`audio gen --wait` 在等待阶段崩溃过一次（打出整段追踪栈）而任务其实已受理：遇到就用 `wait audio`、`fetch audio` 接上，不要重新提交。
+`wait` 超时不代表失败，任务可能还在跑，再 `wait` 一次。`audio gen --wait` 在等待阶段崩溃过一次而任务其实已受理（现在报 `internal_error`、退出码 4）：遇到就用 `wait audio`、`fetch audio` 接上，不要重新提交。
+
+**等待别超过自己执行命令的时限。** `wait` 默认最长等 1200 秒，生成命令的 `--wait` 默认 600 到 1200 秒，而 Agent 执行一条命令往往只允许几分钟，命令被中途杀掉时什么摘要都拿不到。做法：设环境变量 `WRALLY_MAX_WAIT`（秒），比自己的时限短一些，它压住所有命令的 `--timeout`；或者生成时不加 `--wait`，提交后单独跑 `wrally wait <kind> --timeout <秒>`，超时（退出码 1，表里是 `running`）就再跑一次，直到完成后 `fetch`。命令被杀掉也不会弄坏状态，接着 `wait` 即可，不要重新提交。
 
 ## 单独生成（不用项目和清单）
 
@@ -127,4 +132,4 @@ wrally gen fetch -o out                              # 超时、--no-wait 或下
 ## 更多
 
 - 开一部新片子、写 `wrally.yaml`、清单字段、给片子写合成脚本要读的 `export.json`：读 `references/project-setup.md`。
-- 工具的源码和完整规格在 `/Users/allenzheng/codes/wrally-cli`（`CLAUDE.md`，以及本地的设计文档）。要改工具本身的行为到那里去改，不要在创作项目里绕过它。
+- 工具的源码和开发说明在 wrally-cli 仓库（`https://github.com/capken/wrally-cli`；本机用 `--editable` 装的，改的就是它的本地副本）。要改工具本身的行为到那里去改，不要在创作项目里绕过它。

@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `src/wrally/`：代码。
 - `tests/`：单元测试，全部离线，用 `tests/conftest.py` 里的 `FakeWorkRally` 模拟远端。
-- `skills/wrally/`：给 Claude 用的 skill（`SKILL.md` 加 `references/project-setup.md`），本机用符号链接挂在 `~/.claude/skills/wrally`，任何目录的会话都靠它知道 wrally 能做什么、怎么用。它讲的是工具本身，不含某一部片子的东西。**加命令、改选项、改错误码或 `export.json` 的字段时同步改它**；它没有经过测试会话的评估，只核对过命令、选项和错误码与代码一致。
+- `skills/wrally/`：给 Agent 用的使用说明（`SKILL.md` 加 `references/project-setup.md`），按 Claude Code 的 skill 格式写，正文不依赖哪一家 Agent，其他 Agent 的接入方式写在 `README.md`。本机用符号链接挂在 `~/.claude/skills/wrally`，任何目录的会话都靠它知道 wrally 能做什么、怎么用。它讲的是工具本身，不含某一部片子的东西，也不写本机的绝对路径。**加命令、改选项、改错误码或 `export.json` 的字段时同步改它**；它没有经过测试会话的评估，只核对过命令、选项和错误码与代码一致。
 - 仓库里没有任何一部片子的工作区、提示词或素材，也不要放进来。
 
 ## 常用命令
@@ -40,13 +40,13 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 
 本机已把这份源码装成全局命令 `wrally`（`uv tool install --editable …[pitch]`，2026-10-13），在创作项目里直接敲 `wrally`，源码改了立即生效；改了依赖要重装，命令在 `refactor.md` 第 4 步。这台机器有时解析不了 `pypi.org`，`uv` 要下载而连不上时加 `--default-index https://pypi.tuna.tsinghua.edu.cn/simple`（清华镜像，用户同意过），或在缓存够用时加 `--offline`。
 
-环境变量：`WRALLY_CONFIG_DIR`（凭证目录）、`WRALLY_MCP_URL`（MCP 地址）、`WRALLY_CONCURRENCY`（查询和下载的并发数，默认 4）。
+环境变量：`WRALLY_CONFIG_DIR`（凭证目录）、`WRALLY_MCP_URL`（MCP 地址）、`WRALLY_CONCURRENCY`（查询和下载的并发数，默认 4）、`WRALLY_MAX_WAIT`（所有等待的上限，秒，压住各命令的 `--timeout`）。
 
 外部依赖：`ffmpeg`、`ffprobe`（抽帧、时长）。量音高要 `librosa`，是可选依赖 `pitch`。
 
 ## 架构
 
-四层，自下而上依次调用，只有命令层与人或 Claude 交互：
+四层，自下而上依次调用，只有命令层与人或 Agent 交互：
 
 | 层 | 模块 | 职责 |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 - **文件即状态**：命令只依赖清单和 `prompts/`，不依赖对话记忆。`status` `check` `lint` `keyframe pick/sheet` `export` `page` 不调远端。
 - **幂等可重跑**：输入没变不重复提交，已下载的不重复下载，重跑 `pull` 不产生改动。写文件用 `workspace.write_if_changed`（内容相同不写，原子替换）。
 - **单镜错误不中断其他镜头**（`common.for_each`），结束后统一汇总；鉴权错误除外。远端返回的错误只在终端打一行错误码和原始返回的路径。
-- **退出码**：0 全部成功；1 部分失败或超时；2 前置检查不通过，未提交任何任务；3 鉴权或网络错误。用 `errors.py` 里对应的异常类型。
+- **退出码**：0 全部成功；1 部分失败或超时；2 前置检查不通过，未提交任何任务；3 鉴权或网络错误；4 意外错误（`cli.handle_errors` 兜底，追踪栈写进凭证目录的 `last-crash.txt`，终端不打追踪栈）。用 `errors.py` 里对应的异常类型，不要靠退出码 4 表达预期内的错误。`--json` 时错误也在标准输出给一行 JSON。
 - **下载地址不出接口层**：`api/models.py` 的 `strip_urls` 在解析时丢弃所有 URL；`Asset.url` 不参与序列化和打印。命令层只拿 asset_id 和本地路径。
 - **提交生成任务、新建剧集和新建场次的调用传 `retry=False`**：超时后无法判断服务端是否已受理，自动重发可能重复消耗额度或建出重复的剧集和场次。
 - **不写进某一部片子的东西**：阈值、词表、版式、字体、合成参数都属于创作项目。代码里出现片名或某一集的经验值就是放错了地方。
@@ -153,7 +153,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 每镜视频分辨率 `video_resolution`（2026-10-20 加）只有单元测试。
 - `web_copies.json`：四集现有的记录是用 `.wrally/raw/` 里最近一次场次列表补出来的，没有经过真实的 `pull`；`pull`、`push`、生成命令写它只有单元测试。
 - `page`：开着的页面自动刷新（定时加载 `.wrally/page.version.js`）、侧栏随滚动高亮、`J`/`K` 跳镜和 `--watch` 没有在真实浏览器里实测；深色模式和窄屏只用无界面 Chrome 看过一眼。
-- `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
+- `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1（现在会被兜底成一行 `internal_error`、退出码 4）。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
 - 项目文件、`rules`、`export` 和这次拆分之后，调用远端的命令只跑过 `pull`（2026-10-13，四集零改动）；`push` 和三个生成命令还没跑过。离线的 `status`、`lint`、`check`、`page`、`export` 在四集上逐一对比过。
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。
 - 通用化的后续待办（通用模板、多音色等）在设计文档「后续待办：通用化」；视频超分在 `refactor.md` 末尾。

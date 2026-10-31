@@ -1,10 +1,13 @@
 """错误类型与退出码。
 
-退出码：0 全部成功；1 部分镜头失败；2 前置检查不通过（未提交任何任务）；3 鉴权或网络错误。
+退出码：0 全部成功；1 部分镜头失败；2 前置检查不通过（未提交任何任务）；3 鉴权或网络错误；
+4 wrally 自身的意外错误（追踪栈写进凭证目录的 last-crash.txt）。
 错误信息只带错误码和提示，不带返回体。
 """
 
 from pathlib import Path
+
+INTERNAL_EXIT_CODE = 4
 
 
 class WrallyError(Exception):
