@@ -73,7 +73,7 @@ wrally login
 
 不管哪种 Agent，要点都一样：只通过 bash 调 `wrally`，看退出码和那几行摘要，不要直接调用 WorkRally 的 MCP 工具。
 
-Agent 执行一条命令有时限（通常几分钟），而视频要等十几分钟。设 `WRALLY_MAX_WAIT`（比时限短一些），或者提交时不加 `--wait`，之后反复跑 `wrally wait <kind> --timeout <秒>`，直到不再显示 `running`。命令被中途杀掉也不会弄坏状态，接着 `wait` 即可，不要重新提交。
+Agent 执行一条命令有时限（通常几分钟），而视频要等十几分钟。设 `WRALLY_MAX_WAIT`（比时限短一些），或者把提交和等待分开跑：一集里的生成命令（`video gen` 等）默认就只提交，之后反复跑 `wrally wait <kind> --timeout <秒>`；单独生成（`gen video` 等）默认会一直等到下载完，要加 `--no-wait` 只提交，之后反复跑 `wrally gen fetch -o <目录> --timeout <秒>`。直到不再显示 `running` 为止。命令被中途杀掉也不会弄坏状态，接着等即可，不要重新提交。
 
 #### 在 WorkBuddy 里使用
 
@@ -93,7 +93,7 @@ WorkBuddy 桌面端在本机执行命令，skill 格式和上面相同（文件�
 4. **工作区选创作项目目录**（有 `wrally.yaml` 的那个）。wrally 写清单和下载素材都在单集目录里，工作区内的读写不受沙箱限制。
 5. **权限保持默认，不要开「完全访问」**。默认权限下每条命令都要你点确认；生成命令花额度，这道确认正好用得上。
 6. **不要在 WorkBuddy 里接 WorkRally 的连接器**，免得 Agent 绕开 wrally 直接调 MCP。
-7. **等待时长**：没查到 WorkBuddy 一条命令最多能跑多久。等视频时让 Agent 在命令前加 `WRALLY_MAX_WAIT=240`，超时就再 `wrally wait`。
+7. **等待时长**：没查到 WorkBuddy 一条命令最多能跑多久。等视频时让 Agent 在命令前加 `WRALLY_MAX_WAIT=240`，超时就再等一次（一集里的镜头用 `wrally wait`，单独生成用 `wrally gen fetch`）。
 
 设好后重启 WorkBuddy，在技能列表里能看到 `wrally` 就说明装上了。
 
