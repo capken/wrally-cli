@@ -135,7 +135,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 
 - 依次跑图像 → 配音 → 视频，每步调 `gen.gen` 和 `gen.fetch`，不另写提交逻辑；参数在提交任何任务前用 `gen.validate` 全部校验。视频固定 5 秒、最低分辨率、`sound=False`，单图用图像那一步的媒资 ID，图像失败时退回纯文字。
 - 每次运行一个目录 `.wrally-smoke/<时间戳>/`（相对当前目录），三步的参数先写进 `smoke.json`；`--resume` 按这份计划接着做，已提交的步骤靠记下的 `job_id` 和 gen 的参数指纹不会重复提交。
-- 模型取 `ws.settings` 合并后的 `defaults.<kind>.model`（当前目录可以是项目目录或单集目录），画布接口和场次接口的模型 ID 是同一组（2026-10-31 用 `wrally models` 核对过）。
+- 模型按 选项 → `ws.settings` 合并后的 `defaults.<kind>.model`（当前目录可以是项目目录或单集目录）→ `smoke.BUILTIN_MODELS` 的顺序取。内置的三个模型名称是「模型不写死」的唯一例外：smoke 测的是工具和接口，没有项目也要能跑；它们照样按远端模型目录校验，不在目录里就报 `missing_model`，不自动换。画布接口和场次接口的模型 ID 是同一组（2026-10-31 用 `wrally models` 核对过）；2026-11-01 画布的音频模型目录里不再有 Seed-Audio-1.5（是否长期下线未知），内置的配音模型因此改为 Seed-Audio-1.0，它还没有真实提交过。
 - 文件检查用 `media.probe`（ffprobe 的时长、宽高、有无音轨）；视频时长允许 ±0.5 秒。
 
 **远端不可靠的地方**

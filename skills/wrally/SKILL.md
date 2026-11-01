@@ -150,7 +150,7 @@ wrally smoke --only image,audio            # 只跑其中几步
 wrally smoke --video-model "Seedance-2.0 Mini" --dry-run   # 换模型
 ```
 
-- 模型默认取 `wrally.yaml` 和清单合并后的 `defaults.<kind>.model`，可用 `--image-model`、`--audio-model`、`--video-model` 覆盖；都没有时报 `missing_model`。视频模型没有 5 秒选项时报 `bad_duration`。这些都在提交任何任务前检查，退出码 2。
+- 模型依次取：`--image-model`、`--audio-model`、`--video-model` 选项；`wrally.yaml` 和清单合并后的 `defaults.<kind>.model`；内置默认（Seedream-5 Pro、Seed-Audio-1.0、Seedance-2.0 Mini）。所以在任何目录都能直接跑。`--dry-run` 的模型列标出来源（`option`、`defaults`、`built-in`）。内置模型不在远端模型目录里时报 `missing_model`，不自动换别的，用选项指定一个（`wrally models <kind>` 看有哪些）。视频模型没有 5 秒选项时报 `bad_duration`。这些都在提交任何任务前检查，退出码 2。
 - 每次运行在当前目录建 `.wrally-smoke/<时间戳>/`，里面有下载的 `image.*`、`audio.*`、`video.mp4`，计划和进度在 `smoke.json`，提交记录是 `.wrally-gen.json`（和 `wrally gen` 相同）。
 - 检查：图像要读得出宽高，配音要有时长，视频要有画面且时长在 5±0.5 秒；不通过显示 `failed: check`。服务端拒绝某一步（`failed: <错误码>`）不影响后面的步骤。
 - 某一步失败（比如「现在使用的人比较多」）时，过会儿 `wrally smoke --resume` 会只重新提交失败的那一步，失败的任务没有扣额度。

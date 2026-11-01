@@ -4,7 +4,8 @@
 每次运行一个目录 .wrally-smoke/<时间戳>/，计划（三步的参数）先写进 smoke.json，
 --resume 按这份计划接着做：已提交的步骤由 gen 的参数指纹拦住，不会重复提交。
 
-视频用图像那一步的结果当单图；图像失败时退回纯文字。模型取合并后的 defaults，可用选项覆盖。
+视频用图像那一步的结果当单图；图像失败时退回纯文字。
+模型按 选项 → 合并后的 defaults → BUILTIN_MODELS 的顺序取。
 """
 
 import json
@@ -29,6 +30,12 @@ STEPS = ("image", "audio", "video")
 VIDEO_SECONDS = 5
 DURATION_SLACK = 0.5  # 视频时长允许的误差（秒）
 HEADERS = ("step", "model", "state", "secs", "check")
+
+# 没给选项、项目里也没有 defaults 时用的模型：smoke 测的是工具和接口，不是某部片子，
+# 所以这里例外地写了名称。图像、视频 2026-10-31 真实跑通过；配音原用 Seed-Audio-1.5，
+# 2026-11-01 画布目录里没有了，改用同样支持参考音色的 Seed-Audio-1.0。
+# 仍按远端模型目录校验，下线了就报错，不自动换。
+BUILTIN_MODELS = {"image": "Seedream-5 Pro", "audio": "Seed-Audio-1.0", "video": "Seedance-2.0 Mini"}
 
 PROMPTS = {
     "image": "一只白色陶瓷杯放在木桌上，侧光，背景简洁。",
@@ -81,10 +88,21 @@ async def plan(client: McpClient, cwd: Path, models: dict[str, str | None], only
     aspect = (defaults.get("image") or {}).get("aspect")
     steps: dict[str, dict] = {}
     for kind in only:
-        wanted = models.get(kind) or (defaults.get(kind) or {}).get("model")
-        if not wanted:
-            raise PreflightError("missing_model", f"(defaults.{kind}.model or --{kind}-model)")
-        model = canvas.pick_model(await canvas.models(client, kind), str(wanted), kind)
+        source, wanted = next(
+            (src, str(m))
+            for src, m in (
+                ("option", models.get(kind)),
+                ("defaults", (defaults.get(kind) or {}).get("model")),
+                ("built-in", BUILTIN_MODELS[kind]),
+            )
+            if m
+        )
+        catalog = await canvas.models(client, kind)
+        if source == "built-in" and not any(m.matches(wanted) for m in catalog):
+            raise PreflightError(
+                "missing_model", f"(built-in {kind} model {wanted} is gone; use --{kind}-model)"
+            )
+        model = canvas.pick_model(catalog, wanted, kind)
         params: dict = {"prompt": PROMPTS[kind], "model": model.id, "count": 1, "name": kind}
         if kind == "image":
             params |= {"aspect": _aspect(model, aspect), "resolution": _lowest(model.resolutions), "refs": []}
@@ -99,7 +117,7 @@ async def plan(client: McpClient, cwd: Path, models: dict[str, str | None], only
                        "resolution": _lowest(model.resolutions), "aspect": _aspect(model, aspect),
                        "sound": False}  # fmt: skip
         gen_cmd.validate(kind, model, params)
-        steps[kind] = {"model_name": model.name, "params": params}
+        steps[kind] = {"model_name": model.name, "model_source": source, "params": params}
     return {"version": 1, "steps": steps}
 
 
@@ -194,7 +212,13 @@ async def run(
         if dry_run:
             report.summary = f"dry run: would submit {len(data['steps'])} job(s), video {VIDEO_SECONDS}s"
             report.rows = [
-                (k, s["model_name"], "planned", "-", _describe(k, s["params"], "image" in data["steps"]))
+                (
+                    k,
+                    f"{s['model_name']} ({s['model_source']})",
+                    "planned",
+                    "-",
+                    _describe(k, s["params"], "image" in data["steps"]),
+                )
                 for k, s in data["steps"].items()
             ]
             return report
