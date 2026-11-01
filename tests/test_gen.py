@@ -228,3 +228,11 @@ async def test_url_lookup_failure_submits_nothing_and_leaves_no_pending(tmp_path
 
     await gen.gen(remote, "video", video_params(), tmp_path, http=flaky_http(remote, 0))  # 重跑不被拦
     assert len(remote.canvas_requests) == 1
+
+
+async def test_name_with_dot_still_gets_extension(tmp_path, remote):
+    await gen.gen(remote, "audio", audio_params(name="ep3-02-seed1.0"), tmp_path)
+    remote.finish_canvas("c1", "a1", b"ID3", kind="audio")
+    fetched = await gen.fetch(remote, tmp_path, http=remote.http())
+    assert fetched.rows == [("001", "done", "ep3-02-seed1.0.wav")]
+    assert (tmp_path / "ep3-02-seed1.0.wav").read_bytes() == b"ID3"

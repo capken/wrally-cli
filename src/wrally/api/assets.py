@@ -140,7 +140,9 @@ async def download_assets(
     raw_path: Path | None = None,
     http: httpx2.AsyncClient | None = None,
 ) -> list[Download]:
-    """下载一批媒资。items 是 (asset_id, 目标路径)；目标路径没有扩展名时按媒资标题补上。
+    """下载一批媒资。items 是 (asset_id, 不含扩展名的目标路径)，扩展名一律按媒资补上。
+
+    不看目标路径「像不像有扩展名」：文件名里本来就可能有点（如 seed-audio-1.0），那样猜会漏补。
 
     一次批量取地址后并发下载；地址过期（403）时重新取一次地址再试。单个失败不影响其他。
     """
@@ -157,7 +159,7 @@ async def download_assets(
         if asset is None or not asset.url:
             out[i].error = "asset_not_found"
             return
-        dest = dest if dest.suffix else dest.with_name(dest.name + asset.suffix)
+        dest = dest.with_name(dest.name + asset.suffix)
         async with limit:
             try:
                 error = await _fetch(http, asset.url, dest)
