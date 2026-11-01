@@ -783,13 +783,13 @@ def gen_fetch(
 @handle_errors
 def smoke(
     image_model: Annotated[
-        str | None, typer.Option("--image-model", help="图像模型 ID 或名称，默认 defaults.image.model")
+        str | None, typer.Option("--image-model", help="图像模型；默认 defaults.image.model，没有则用内置的")
     ] = None,
     audio_model: Annotated[
-        str | None, typer.Option("--audio-model", help="音频模型 ID 或名称，默认 defaults.audio.model")
+        str | None, typer.Option("--audio-model", help="音频模型；默认 defaults.audio.model，没有则用内置的")
     ] = None,
     video_model: Annotated[
-        str | None, typer.Option("--video-model", help="视频模型 ID 或名称，默认 defaults.video.model")
+        str | None, typer.Option("--video-model", help="视频模型；默认 defaults.video.model，没有则用内置的")
     ] = None,
     only: Annotated[str | None, typer.Option("--only", help="只跑这几步，如 image,audio")] = None,
     project: ProjectOpt = None,

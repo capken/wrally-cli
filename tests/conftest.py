@@ -95,6 +95,8 @@ CANVAS_MODELS = {
             {"model_id": "aud9", "name": "seed-audio-1.5", "is_minimax": False, "max_audio_count": 6,
              "restrictions": {"max_audio_count": 6}},
             {"model_id": "mm1", "name": "MiniMax-2.8-HD", "is_minimax": True, "restrictions": {}},
+            {"model_id": "aud10", "name": "Seed-Audio-1.0", "is_minimax": False, "max_audio_count": 3,
+             "restrictions": {"max_audio_count": 3}},
         ],
         "music_models": [{"model_id": "mus1", "name": "MiniMax-music3.0", "restrictions": {}}],
     },

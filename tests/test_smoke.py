@@ -80,13 +80,23 @@ async def test_no_5s_option_stops_before_any_submit(tmp_path, remote, monkeypatc
     assert e.value.code == "bad_duration" and not remote.canvas_requests
 
 
-async def test_missing_model_is_preflight(tmp_path, remote):
+async def test_model_sources_option_defaults_builtin(tmp_path, remote):
+    (tmp_path / "wrally.yaml").write_text("defaults:\n  image: {model: img9}\n", encoding="utf-8")
+    report = await smoke.run(remote, tmp_path, models={"audio": "mm1"}, dry_run=True)
+    assert [r[1] for r in report.rows] == [
+        "Seedream-5 Pro (defaults)",
+        "MiniMax-2.8-HD (option)",
+        "Seedance-2.0 Mini (built-in)",
+    ]
+
+
+async def test_builtin_model_gone_is_preflight(tmp_path, remote, monkeypatch):
     (tmp_path / "wrally.yaml").write_text("defaults: {}\n", encoding="utf-8")
+    monkeypatch.setitem(smoke.BUILTIN_MODELS, "video", "Retired-Model")
     with pytest.raises(PreflightError) as e:
-        await smoke.run(remote, tmp_path, only=["image"])
-    assert e.value.code == "missing_model"
-    report = await smoke.run(remote, tmp_path, models={"image": "img9"}, only=["image"], dry_run=True)
-    assert report.rows[0][1] == "Seedream-5 Pro"
+        await smoke.run(remote, tmp_path, dry_run=True)
+    assert e.value.code == "missing_model" and "--video-model" in e.value.hint
+    assert not remote.canvas_requests
 
 
 async def test_image_failure_falls_back_to_text_video(tmp_path, remote):
