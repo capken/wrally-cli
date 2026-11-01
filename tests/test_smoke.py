@@ -70,6 +70,8 @@ async def test_runs_three_steps_in_order_and_video_uses_image(tmp_path, remote):
 async def test_dry_run_submits_nothing(tmp_path, remote):
     report = await smoke.run(remote, tmp_path, dry_run=True)
     assert [r[0] for r in report.rows] == ["image", "audio", "video"]
+    only_audio = await smoke.run(remote, tmp_path, only=["audio"], dry_run=True)
+    assert only_audio.summary == "dry run: would submit 1 job(s)"
     assert not remote.canvas_requests and not (tmp_path / smoke.ROOT).exists()
 
 

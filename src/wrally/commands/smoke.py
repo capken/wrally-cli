@@ -210,7 +210,7 @@ async def run(
         data = await plan(client, cwd, models or {}, [k for k in STEPS if k in chosen])
         data["project_id"] = _project_id(cwd, project_id)
         if dry_run:
-            report.summary = f"dry run: would submit {len(data['steps'])} job(s), video {VIDEO_SECONDS}s"
+            report.summary = f"dry run: would submit {len(data['steps'])} job(s)"
             report.rows = [
                 (
                     k,
