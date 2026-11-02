@@ -312,3 +312,25 @@ def test_cli_page_in_project_directory_rebuilds_everything(ws, tmp_path_factory)
     edit(ep1, "02", lambda e: e.update(keyframe={"asset_id": "k2"}))
     CliRunner().invoke(app, ["page", "-C", str(root)])
     assert index_data(root)["episodes"][0]["stats"]["keyframe"] == [1, 4]
+
+
+def test_suggested_keyframe_is_marked(ws):
+    def change(e):
+        e["keyframe"] = {"candidates": flow_seq(["a1", "a2"])}
+        e["suggest"] = {"keyframe": "b", "note": "人物更清楚"}
+
+    edit(ws, "02", change)
+    put(ws, ".wrally/keyframes/02/A.png")
+    put(ws, ".wrally/keyframes/02/B.png")
+    kf = shot(ws, "02")["keyframe"]
+    assert [(c["label"], c["suggested"]) for c in kf["candidates"]] == [("A", False), ("B", True)]
+    assert kf["suggest"] == "B" and kf["suggest_note"] == "人物更清楚"
+    assert kf["status"]["state"] == "pending"  # 推荐不等于选用
+
+    # 推荐了不存在的候选：不标
+    edit(ws, "02", lambda e: e.update(suggest={"keyframe": "D"}))
+    kf = shot(ws, "02")["keyframe"]
+    assert kf["suggest"] == "" and not any(c["suggested"] for c in kf["candidates"])
+
+    edit(ws, "01", lambda e: e.update(suggest="A"))  # 写错形状不报错
+    assert shot(ws, "01")["keyframe"]["suggest"] == ""

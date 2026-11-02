@@ -57,6 +57,29 @@ async def test_gen_writes_prompt_then_model_then_submits(ready):
     assert order == ["list", "edit_content", "set_model", "list", "shotlist_generate_audio"]
 
 
+async def test_audio_model_overrides_the_default_for_one_shot(ready):
+    """单镜写 audio_model：这一镜用它（分组各写一次 set_model），其余镜照旧；指纹随之变化。"""
+    from wrally.commands.check import stale
+
+    ws, remote = ready
+    edit(ws, "02", audio_model="aud10")
+    report = await run(ws, remote, "01,02")
+    assert report.submitted == ["01", "02"]
+    assert remote.actions() == ["edit_content", "set_model", "set_model"]
+    assert json.loads(extra(remote, "s01")["gen_config"])["audio"]["model"] == "aud1"
+    assert json.loads(extra(remote, "s02")["gen_config"])["audio"] == {
+        "model": "aud10", "count": 1, "modelCapabilities": [15],
+    }  # fmt: skip
+    data = ws.load()
+    assert stale(ws, data, entry(ws, "02")) == []
+    edit(ws, "02", audio_model=None)
+    assert stale(ws, ws.load(), entry(ws, "02")) == ["audio was made from different narration"]
+    edit(ws, "02", audio_model=" ")
+    with pytest.raises(PreflightError) as e:
+        await run(ws, remote, "02")
+    assert e.value.code == "bad_audio_model"
+
+
 async def test_voice_is_bound_per_shot_before_the_prompt_is_written(ready):
     ws, remote = ready
     edit(
@@ -181,3 +204,40 @@ async def test_audio_model_survives_even_if_writing_the_prompt_wipes_config(read
     assert report.submitted == ["02"]
     assert json.loads(extra(remote, "s02")["gen_config"])["audio"]["model"] == "aud1"
     assert report.notes == ["note: video config changed on 02 (video gen rewrites it)"]
+
+
+@pytest.fixture
+def preset(ws, remote):
+    """预置音色：不配旁白模板，提示词就是台词本身。"""
+    edit(ws, defaults={"audio": {"model": "aud1", "voice_preset": "male-qn-daxuesheng",
+                                 "voice_fields": {"audio_speech_rate": -10}}})  # fmt: skip
+    for key in ("01", "02"):
+        edit(ws, key, audio_prompt=None, narration=f"台词「{key}」")
+    return ws, remote
+
+
+async def test_preset_voice_sends_bare_narration_and_field_values_without_binding(preset):
+    from wrally.commands.check import stale
+
+    ws, remote = preset
+    report = await run(ws, remote, "02")
+    assert report.submitted == ["02"]
+    assert "bind_asset" not in remote.actions()
+    assert extra(remote, "s02")["audio_prompt"] == "台词「02」"
+    assert json.loads(extra(remote, "s02")["gen_config"])["audio"] == {
+        "model": "aud1", "count": 1, "modelCapabilities": [14],
+        "audioFieldValues": {"voice": "male-qn-daxuesheng", "audio_speech_rate": -10},
+    }  # fmt: skip
+    assert stale(ws, ws.load(), entry(ws, "02")) == []
+    edit(ws, defaults={"audio": {"model": "aud1", "voice_preset": "other"}})
+    assert stale(ws, ws.load(), entry(ws, "02")) == ["audio was made from different narration"]
+
+
+async def test_preset_voice_refuses_a_narration_template(preset):
+    """模板会被预置音色原样念出来：两者同时配置时不提交。"""
+    ws, remote = preset
+    ws.write_text("styles/n.md", TEMPLATE + "\n")
+    edit(ws, defaults={"audio": {"model": "aud1", "voice_preset": "v"}, "narration_template": "styles/n.md"})
+    with pytest.raises(PreflightError) as e:
+        await run(ws, remote, "02")
+    assert e.value.code == "template_with_preset" and remote.calls == []

@@ -80,10 +80,20 @@ def _keyframe(ws: Workspace, entry: dict) -> dict[str, Any]:
     directory = ws.state_dir / "keyframes" / key
     ids = [str(c) for c in kf.get("candidates") or []]
     picked = kf.get("asset_id")
+    # 清单里手写的推荐（suggest: {keyframe: B, note: 理由}），只用来在页面上标出来，不影响选图
+    hint = entry.get("suggest") or {}
+    suggest = str(hint.get("keyframe") or "").strip().upper() if isinstance(hint, dict) else ""
     candidates = [
-        {"label": letter(i), "src": _src(ws, _find(directory, letter(i))), "picked": asset_id == picked}
+        {
+            "label": letter(i),
+            "src": _src(ws, _find(directory, letter(i))),
+            "picked": asset_id == picked,
+            "suggested": letter(i) == suggest,
+        }
         for i, asset_id in enumerate(ids)
     ]
+    if not any(c["suggested"] for c in candidates):
+        suggest = ""
     src = None
     if picked:
         stem = letter(ids.index(picked)) if picked in ids else f"pick-{picked}"
@@ -99,7 +109,11 @@ def _keyframe(ws: Workspace, entry: dict) -> dict[str, Any]:
     else:
         status = _state("skipped" if is_skipped(entry, "keyframe") else "none")
     pick = letter(ids.index(picked)) if picked in ids else ""
-    return {"status": status, "src": src, "pick": pick, "candidates": candidates}
+    note = str(hint.get("note") or "") if suggest else ""
+    return {
+        "status": status, "src": src, "pick": pick, "candidates": candidates,
+        "suggest": suggest, "suggest_note": note,
+    }  # fmt: skip
 
 
 def _media(ws: Workspace, entry: dict, name: str, stale: list[str]) -> dict[str, Any]:

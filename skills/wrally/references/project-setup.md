@@ -46,6 +46,7 @@ rules:                                    # 见下文；不写就什么都不查
 - 模型 ID 和各档分辨率的取值要向用户确认，不要猜，也不要从别的项目照抄了事：用哪个模型是用户的决定，ID 还可能随平台变化。
 - 三种公共文本都是可选的，没配的那一类就不拼接，文件里写完整提示词。
 - 音色名必须和旁白模板里 `<{voice_name}>` 出现的名字一致，`audio gen` 靠它绑定音色。
+- 用模型自带的预置音色（如 MiniMax）时，`defaults.audio` 写 `{model: <模型 ID>, voice_preset: <音色 ID>, voice_fields: {audio_speech_rate: 1.0}}`，不写 `voice_asset`、`voice_name`，不绑定参考音频；`voice_fields` 可选，原样并进模型参数。这类模型把提示词原样念出来，所以要设 `narration_template: null`，否则 `audio gen` 报 `template_with_preset`。
 - wrally 不认识的顶层小节（比如给合成脚本用的 `assemble:`）可以随便加，wrally 不解释，`export` 会原样带出。
 
 ## 建第一集
@@ -76,7 +77,10 @@ wrally new --shots 00-11,99 --name "EP1 <标题>" --title "<标题>"            
 | 每镜 `skip: [keyframe]` | 这一镜永远不由 wrally 生成这类素材（`keyframe`、`video`、`audio`） |
 | 每镜 `video_duration` | 只给这一镜换视频时长（秒） |
 | 每镜 `video_resolution` | 只给这一镜换视频分辨率（Seedance-2.0 Mini：1 是 480p、3 是 720p） |
-| 每镜 `keyframe.refs: ["04", "06"]` | 用这些镜头的定稿关键帧作参考图生成（画布图生图；这条路径没有真实验证过，用之前告诉用户） |
+| 每镜 `audio_model` | 只给这一镜换旁白模型（模型 ID，`wrally models audio` 查） |
+| 每镜 `suggest: {keyframe: B, note: 理由}` | 推荐的候选关键帧，只在进度网页上标出来（虚线框加「推荐」角标；没选图时主图先显示它），不算选图 |
+| 每镜 `keyframe.refs: ["04", "06"]` | 用这些镜头的定稿关键帧作参考图生成（画布图生图；引用 `ref_assets` 真实跑通过，引用镜号的定稿关键帧还没有真实验证过，用之前告诉用户）。一项也可以是顶层 `ref_assets` 里登记的名字，取对应的媒资（如角色设定图），镜号优先；两者都不是时 `lint` 报错、生成报 `unknown_ref`。提示词里用「第一张图片」「第二张图片」按 `refs` 的顺序引用 |
+| 顶层 `ref_assets: {露珠: <媒资 ID>}` | 可被 `refs` 引用的参考图，名字到媒资 ID。可以写在项目文件里各集共用 |
 
 不要手改的：`story_id`、`series_id`，以及 `keyframe`、`video`、`audio` 小节里的 `candidates`、`asset_id`、`synced`、`status`、`made_from`、`results_before` 等。它们是 wrally 判断「输入变没变、任务提交没提交」的依据，改错了会重复提交或把旧结果当成新的。选图用 `wrally keyframe pick`，不要手写 `pick`。
 

@@ -2,6 +2,8 @@
 
 普通镜头：set_model image → shotlist_generate_image（全部镜头一次提交）。
 带 refs 的镜头：用被引用镜头的定稿关键帧作参考图，走画布图生图，逐镜提交。
+refs 里的一项可以是镜号（取那一镜的定稿关键帧），也可以是 ref_assets 小节里登记的名字（取对应的媒资，
+比如角色设定图）。镜号优先。
 
 前置检查与幂等的做法和 video gen 相同：提示词要已 push；输入指纹没变不重复提交；
 提交前落盘 submitting，被打断后重跑时先问远端。
@@ -69,10 +71,19 @@ async def gen(
     no_prompt = [e for e in entries if not (prompts[str(e["key"])] or "").strip()]
     if no_prompt:
         raise PreflightError("missing_image_prompt", f"({_keys(no_prompt)})")
+    named = ws.settings(data, "ref_assets")
     refs: dict[str, list[str]] = {}
     for e in entries:
         wanted = [str(r) for r in (e.get("keyframe") or {}).get("refs") or []]
-        assets = [((by_key.get(r) or {}).get("keyframe") or {}).get("asset_id") for r in wanted]
+        unknown = [r for r in wanted if r not in by_key and not named.get(r)]
+        if unknown:
+            raise PreflightError(
+                "unknown_ref", f"({e['key']}: {','.join(unknown)} is neither a shot nor in ref_assets)"
+            )
+        assets = [
+            ((by_key[r].get("keyframe") or {}).get("asset_id")) if r in by_key else str(named[r])
+            for r in wanted
+        ]
         if not all(assets):
             # 回顾镜头要用前面镜头的定稿关键帧作参考，没定稿就不能生成
             missing = [r for r, a in zip(wanted, assets, strict=True) if not a]

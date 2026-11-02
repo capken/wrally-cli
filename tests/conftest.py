@@ -175,7 +175,14 @@ class FakeWorkRally:
         if tool == "canvas_get_task":
             return dict(self.canvas[arguments["task_id"]])
         if tool == "shotlist_model_list":
-            return {"models": {"audio": [{"id": "aud1", "name": "seed-audio", "capabilities": [14]}]}}
+            return {
+                "models": {
+                    "audio": [
+                        {"id": "aud1", "name": "seed-audio", "capabilities": [14]},
+                        {"id": "aud10", "name": "Seed-Audio-1.0", "capabilities": [15]},
+                    ]
+                }
+            }
         if tool == "shotlist_get_result":
             if arguments["story_id"] in self.broken_stories:
                 raise ToolError("50001", tool=tool, raw_path=raw_path)

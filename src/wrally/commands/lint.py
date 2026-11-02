@@ -58,6 +58,8 @@ def lint(ws: Workspace, spec: str = "all") -> LintReport:
     data = load_manifest(ws)
     styles = load_styles(ws, data)
     rules = load_rules(ws, data)
+    shot_keys = {str(e["key"]) for e in data.get("shots") or []}
+    named = ws.settings(data, "ref_assets")
     report = LintReport()
     for entry in select(data, spec):
         key = str(entry["key"])
@@ -85,7 +87,9 @@ def lint(ws: Workspace, spec: str = "all") -> LintReport:
                 compose(styles, entry, kind, body)
             except PreflightError as e:
                 add("error", f"{kind}: {e.code}")
-            refs = (entry.get("keyframe") or {}).get("refs") or []
+            refs = [str(r) for r in (entry.get("keyframe") or {}).get("refs") or []]
+            if kind == "image" and (unknown := [r for r in refs if r not in shot_keys and not named.get(r)]):
+                add("error", f"image: unknown refs {','.join(unknown)} (not a shot, not in ref_assets)")
             if kind == "image" and refs and not re.search(r"第[一二三四五六七八九十\d]+张图", body):
                 # 画布靠「第一张图片」「第二张图片」把提示词和参考图对上
                 add("warn", f"image: has {len(refs)} refs but prompt never says 第N张图片")

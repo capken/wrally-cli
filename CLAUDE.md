@@ -120,7 +120,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 幂等靠清单里的 `made_from`（输入指纹）。提交前先把状态落盘为 `submitting` 并记下 `results_before`、`failed_before`；`wait` 也靠这组基线判断，避免把旧结果当成新任务的结果。
 - `keyframe gen`、`video gen` 要求提示词已经 `push`；`audio gen` 自己写旁白提示词。
 - `video gen` 用 `keyframe.synced`（wrally 上次写进远端的选用图）判断网页上是否被人改过。
-- 单镜要换视频时长就在清单里给这一镜写 `video_duration`，要换分辨率就写 `video_resolution`（Seedance-2.0 Mini：1 是 480p、3 是 720p），不要改 `defaults.video` 里的对应值：它们计入每镜的输入指纹，改默认值会让整集的视频都被判为输入变了。指纹一律经 `video.shot_settings` 取参数。
+- 单镜要换视频时长就在清单里给这一镜写 `video_duration`，要换分辨率就写 `video_resolution`（Seedance-2.0 Mini：1 是 480p、3 是 720p），不要改 `defaults.video` 里的对应值：它们计入每镜的输入指纹，改默认值会让整集的视频都被判为输入变了。指纹一律经 `video.shot_settings` 取参数。旁白同理：单镜换模型写 `audio_model`（模型 ID），指纹经 `audio.shot_model` 取；`audio gen` 按模型分组，每组一次 `set_model`。
 
 **单独生成 `wrally gen`**
 
@@ -152,12 +152,15 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 下面说的「真实验证」都是在作者的一个创作项目的四集上做的：一集走过全流程，一集用 `new` 新建，一集用 `pull` 建档后返修。具体是哪部片子、哪几集，见 `CLAUDE.local.md`。
 
 - `new` 真实建过一集（剧集加 13 镜）；给已有剧集加镜头、建场次超时后重跑只有单元测试。
-- 带 `refs` 的画布路径（`canvas_generate_image`）只有单元测试，没有真实提交过。
+- 带 `refs` 的画布路径（`canvas_generate_image`）2026-11-02 真实跑通一次：一镜引用 `ref_assets` 里的两张角色设定图，`keyframe gen --wait --fetch` 出 2 张候选，等待 113 秒，下载、清单、对比图都正常，画面里的人物和设定图一致。引用镜号的定稿关键帧、中断恢复仍只有单元测试。
 - 中断恢复、绑定音色、多镜一起提交时任务 ID 的对应，只有单元测试。选图冲突（`pick_conflict` 加 `--force-picks`）和多镜一起提交真实跑过。
 - 富文本副本的三处检查（`web copy differs`、`push` 的提示、`stale_web_prompt`）只有单元测试；真实只确认了两份一致时不误报。动画副本的三处检查同样只有单元测试。
 - 每镜视频时长 `video_duration` 除单元测试外只真实用过一镜。
 - `McpClient` 的断线重连没有测试。
 - 每镜视频分辨率 `video_resolution`（2026-10-20 加）只有单元测试。
+- 每镜旁白模型 `audio_model`（2026-11-01 加）：两种模型混在一次提交里只有单元测试。
+- 预置音色 `voice_preset`（加 `voice_fields`，不绑定参考音频、不能配旁白模板）只有单元测试，没有真实提交过。
+- 进度网页上的推荐候选图（每镜 `suggest`）只有单元测试，没有在真实浏览器里看过。
 - `web_copies.json`：那四集现有的记录是用 `.wrally/raw/` 里最近一次场次列表补出来的，没有经过真实的 `pull`；`pull`、`push`、生成命令写它只有单元测试。
 - `page`：开着的页面自动刷新（定时加载 `.wrally/page.version.js`）、侧栏随滚动高亮、`J`/`K` 跳镜和 `--watch` 没有在真实浏览器里实测；深色模式和窄屏只用无界面 Chrome 看过一眼。
 - `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1（现在会被兜底成一行 `internal_error`、退出码 4）。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。

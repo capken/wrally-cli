@@ -156,6 +156,27 @@ async def test_refs_need_the_referenced_shots_to_be_picked(recap):
     assert e.value.code == "missing_ref_pick" and "needs picks of 01" in e.value.hint and remote.calls == []
 
 
+async def test_refs_can_name_reference_assets(recap):
+    """refs 里写 ref_assets 登记的名字，取对应的媒资（如角色设定图），可以和镜号混用，顺序不变。"""
+    ws, remote = recap
+    remote.add_asset("sheetA", "image", b"sheet", "a.png")
+    edit(ws, ref_assets={"公主": "sheetA"})
+    edit(ws, "99", keyframe={"refs": ["公主", "02"]})
+    report = await run(ws, remote, "99")
+    assert report.rows == [("99", "submitted", "2 images via canvas, refs 公主,02")]
+    [request] = remote.canvas_requests
+    assert request["input_images"] == ["https://dl.example.com/sheetA", "https://dl.example.com/key02"]
+
+
+async def test_unknown_ref_is_rejected_before_any_call(recap):
+    ws, remote = recap
+    edit(ws, "99", keyframe={"refs": ["公主"]})
+    with pytest.raises(PreflightError) as e:
+        await run(ws, remote, "99")
+    assert e.value.code == "unknown_ref" and "公主" in e.value.hint and remote.calls == []
+    assert ("99", "error", "image: unknown refs 公主 (not a shot, not in ref_assets)") in lint(ws, "99").rows
+
+
 async def test_canvas_results_become_candidates(recap):
     ws, remote = recap
     await run(ws, remote, "99")

@@ -19,10 +19,10 @@ HEADERS = ("shot", "missing", "stale")
 EXPORT = "export.json"  # 在 .wrally/ 下
 VERSION = 1
 # wrally 自己用的键；其余的都算 extra
-TOP_KEYS = ("project_id", "series_id", "title", "defaults", "rules", "shots", "page", "output")
+TOP_KEYS = ("project_id", "series_id", "title", "defaults", "rules", "shots", "page", "output", "ref_assets")
 SHOT_KEYS = (
     "key", "story_id", "skip", "narration", "border", "raw", "video_duration", "video_resolution",
-    "image_prompt", "anim_prompt", "audio_prompt", "keyframe", "video", "audio",
+    "audio_model", "suggest", "image_prompt", "anim_prompt", "audio_prompt", "keyframe", "video", "audio",
 )  # fmt: skip
 
 

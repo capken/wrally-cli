@@ -141,6 +141,13 @@ summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var
   background: rgba(0, 0, 0, .55); border-radius: 6px; padding: 1px 7px;
 }
 .cand.picked span { background: var(--accent); }
+.cand.suggested { outline: 3px dashed var(--orange); outline-offset: -3px; }
+.cand.picked.suggested { outline-style: solid; }
+.cand em {
+  position: absolute; right: 6px; top: 6px; font-size: 12px; font-weight: 600; font-style: normal; color: #fff;
+  background: var(--orange); border-radius: 6px; padding: 1px 7px;
+}
+.suggest-note { font-size: 13px; color: var(--orange); margin: 10px 0 0; }
 .prompt { margin: 12px 0 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .prompt .common { color: var(--faint); }
 .prompt-note { font-size: 13px; color: var(--orange); margin: 8px 0 0; }
@@ -325,18 +332,25 @@ summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var
   function card(shot) {
     const kf = shot.keyframe;
     const shown = kf.candidates.filter(c => c.src);
-    const group = shown.map(c => ({ src: c.src, caption: `${shot.key} · 候选 ${c.label}${c.picked ? " · 选用" : ""}` }));
+    const group = shown.map(c => ({ src: c.src,
+      caption: `${shot.key} · 候选 ${c.label}${c.picked ? " · 选用" : ""}${c.suggested ? " · 推荐" : ""}` }));
     const picked = shown.findIndex(c => c.picked);
-    const zoom = () => picked >= 0 ? show(group, picked) : show([{ src: kf.src, caption: shot.key + " · 选用关键帧" }], 0);
-    const cands = el("details", { id: `d-${shot.key}-cands` },
+    // 还没选图时，主图位置先放推荐的那张
+    const hinted = shown.findIndex(c => c.suggested);
+    const cover = kf.src || (!kf.pick && hinted >= 0 ? shown[hinted].src : null);
+    const zoom = () => picked >= 0 ? show(group, picked)
+      : kf.src ? show([{ src: kf.src, caption: shot.key + " · 选用关键帧" }], 0) : show(group, hinted);
+    const cands = el("details", { id: `d-${shot.key}-cands`, open: kf.suggest && !kf.pick ? true : null },
       el("summary", null, "候选关键帧", el("small", { text: `${kf.candidates.length} 张` })),
       el("div", { class: "cands" }, kf.candidates.map(c => {
         const at = shown.indexOf(c);
-        return el("div", { class: "cand" + (c.picked ? " picked" : "") },
+        return el("div", { class: "cand" + (c.picked ? " picked" : "") + (c.suggested ? " suggested" : "") },
           // 展开时才把 data-src 换成 src，默认不加载候选原图
           c.src ? el("img", { "data-src": c.src, alt: "", onclick: () => show(group, at) }) : "未下载",
-          el("span", { text: c.label }));
-      })));
+          el("span", { text: c.label }),
+          c.suggested ? el("em", { text: "推荐" }) : null);
+      })),
+      kf.suggest ? el("p", { class: "suggest-note", text: `推荐 ${kf.suggest}${kf.suggest_note ? "：" + kf.suggest_note : ""}` }) : null);
     cands.addEventListener("toggle", () => {
       if (cands.open) for (const img of cands.querySelectorAll("img[data-src]")) {
         img.src = img.dataset.src;
@@ -354,9 +368,10 @@ summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var
       el("div", { class: "media" },
         el("figure", null,
           el("div", { class: "frame" },
-            kf.src ? el("img", { src: kf.src, alt: "", loading: "lazy", onclick: zoom }) : kf.status.label),
+            cover ? el("img", { src: cover, alt: "", loading: "lazy", onclick: zoom }) : kf.status.label),
           el("figcaption", null, el("b", { text: "关键帧" }),
-            kf.pick ? `选用 ${kf.pick} / 共 ${kf.candidates.length} 张` : kf.status.label)),
+            kf.pick ? `选用 ${kf.pick} / 共 ${kf.candidates.length} 张`
+              : kf.suggest && cover ? `推荐 ${kf.suggest}（未选）/ 共 ${kf.candidates.length} 张` : kf.status.label)),
         el("figure", null,
           el("div", { class: "frame" }, shot.video.src
             // 没有关键帧当封面时取视频首帧，否则是一块黑

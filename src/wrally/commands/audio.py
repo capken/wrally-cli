@@ -4,6 +4,11 @@
 → 回读核对 → 一次提交。旁白提示词由 audio gen 自己写入，不要求事先 push。
 
 幂等和 video gen 同一套：每镜记下输入指纹（台词拼出的提示词 + 模型 + 音色），没变不重复提交。
+音色有两种给法：参考音色（voice_asset + voice_name，逐镜绑定参考音频，旁白模板用 <音色名> 引用），
+或预置音色（voice_preset，MiniMax 这类模型自带的音色 ID，写进 set_model 的 audioFieldValues.voice，
+不绑定参考音频）。预置音色的模型会把提示词原样念出来，所以这时不能配旁白模板，提示词就是台词本身；
+voice_fields 里的其余字段（如 audio_speech_rate）原样并进 audioFieldValues。
+
 --redo-failed 只重做检查没过的镜头：音高超标、左右声道音量差太大、停顿处有背景音
 （check 写进清单的 f0、channel_gap、noise_floor）或上次生成失败。
 """
@@ -31,6 +36,25 @@ HEADERS = ("shot", "status", "detail")
 def fingerprint(prompt: str, model: str, voice: str) -> str:
     payload = json.dumps([prompt, model, voice], ensure_ascii=False)
     return hashlib.sha1(payload.encode()).hexdigest()[:12]
+
+
+def voice_key(audio_defaults: dict) -> str:
+    """音色的身份，进输入指纹：参考音色是媒资 ID，预置音色是 preset:<ID> 加上额外字段。"""
+    preset = audio_defaults.get("voice_preset")
+    if not preset:
+        return str(audio_defaults.get("voice_asset") or "")
+    fields = audio_defaults.get("voice_fields") or {}
+    return "preset:" + json.dumps({"voice": preset, **fields}, ensure_ascii=False, sort_keys=True)
+
+
+def shot_model(model: str, entry: dict) -> str:
+    """单镜的旁白模型：这一镜写了 `audio_model` 就用它，否则用 defaults.audio.model。"""
+    value = entry.get("audio_model")
+    if value is None:
+        return model
+    if not isinstance(value, str) or not value.strip():
+        raise PreflightError("bad_audio_model", f"({entry.get('key')}: {value!r})")
+    return value.strip()
 
 
 def _keys(entries: list[dict]) -> str:
@@ -61,9 +85,22 @@ async def gen(
     defaults = ws.settings(data, "defaults").get("audio") or {}
     rules = load_rules(ws, data)
     model, voice, voice_name = defaults.get("model"), defaults.get("voice_asset"), defaults.get("voice_name")
-    missing = [n for n, v in (("model", model), ("voice_asset", voice), ("voice_name", voice_name)) if not v]
+    preset = defaults.get("voice_preset")
+    needed = (
+        (("model", model),)
+        if preset
+        else (("model", model), ("voice_asset", voice), ("voice_name", voice_name))
+    )
+    missing = [n for n, v in needed if not v]
     if missing:
         raise PreflightError("missing_defaults", f"(defaults.audio.{missing[0]})")
+    if preset and styles.audio is not None:
+        # 预置音色的模型把提示词原样念出来，模板里的「使用<…>的音色」也会被念进去
+        raise PreflightError(
+            "template_with_preset", "(set defaults.narration_template: null when using voice_preset)"
+        )
+    field_values = {"voice": preset, **(defaults.get("voice_fields") or {})} if preset else None
+    voice_id = voice_key(defaults)
     series_id, project_id = data["series_id"], data["project_id"]
     report = GenReport(noun="audio")
     for e in [e for e in selected if is_skipped(e, "audio")]:
@@ -75,7 +112,8 @@ async def gen(
     no_text = [e for e in entries if not (prompts[str(e["key"])] or "").strip()]
     if no_text:
         raise PreflightError("missing_narration", f"({_keys(no_text)})")
-    prints = {k: fingerprint(p, model, voice) for k, p in prompts.items()}
+    models = {str(e["key"]): shot_model(model, e) for e in entries}
+    prints = {k: fingerprint(p, models[k], voice_id) for k, p in prompts.items()}
 
     todo, recover = [], []
     for e in entries:
@@ -136,12 +174,13 @@ async def gen(
     if not todo:
         ws.save(data)
         return report
-    capabilities = await shots_api.model_capabilities(
-        client, "audio", model, ws.raw_dir / "audio-models.json"
-    )
+    capabilities = {}
+    for m in dict.fromkeys(models[str(e["key"])] for e in todo):
+        name = "audio-models.json" if m == model else f"audio-models-{m}.json"
+        capabilities[m] = await shots_api.model_capabilities(client, "audio", m, ws.raw_dir / name)
 
-    # —— 逐镜绑定音色：已经绑着同一个音色的不动 ——
-    unbound = [e for e in todo if remote[e["story_id"]].voice_asset_ids != [voice]]
+    # —— 逐镜绑定音色：已经绑着同一个音色的不动；预置音色不绑定 ——
+    unbound = [] if preset else [e for e in todo if remote[e["story_id"]].voice_asset_ids != [voice]]
     bind_errors = await bind_voice(
         client, [(str(e["key"]), e["story_id"]) for e in unbound], voice, voice_name, ws.raw_dir, http
     )
@@ -166,11 +205,14 @@ async def gen(
     ]
     if edits:
         await shots_api.edit_content(client, series_id, project_id, edits, ws.raw_dir)
-    config = {"model": model, "count": 1, "modelCapabilities": capabilities}
-    await shots_api.set_model(
-        client, series_id, project_id, [e["story_id"] for e in ready], "audio", config,
-        ws.raw_dir / "audio-set_model.json",
-    )  # fmt: skip
+    # 一次 set_model 只能写一个模型：按模型分组，每组一次
+    for m in dict.fromkeys(models[str(e["key"])] for e in ready):
+        group = [e["story_id"] for e in ready if models[str(e["key"])] == m]
+        config = {"model": m, "count": 1, "modelCapabilities": capabilities[m]}
+        if field_values:
+            config["audioFieldValues"] = field_values
+        name = "audio-set_model.json" if m == model else f"audio-set_model-{m}.json"
+        await shots_api.set_model(client, series_id, project_id, group, "audio", config, ws.raw_dir / name)
 
     # —— 回读核对 ——
     after = {
@@ -180,8 +222,10 @@ async def gen(
     wrong = [
         e for e in ready
         if after[e["story_id"]].audio_prompt.strip("\n") != prompts[str(e["key"])]
-        or (after[e["story_id"]].gen_config.get("audio") or {}).get("model") != model
-        or after[e["story_id"]].voice_asset_ids != [voice]
+        or (after[e["story_id"]].gen_config.get("audio") or {}).get("model") != models[str(e["key"])]
+        or (not preset and after[e["story_id"]].voice_asset_ids != [voice])
+        or (preset and (after[e["story_id"]].gen_config.get("audio") or {}).get("audioFieldValues")
+            != field_values)
     ]  # fmt: skip
     if wrong:
         raise PreflightError("config_not_applied", f"({_keys(wrong)})")

@@ -61,7 +61,9 @@ def stale(ws: Workspace, data: dict, entry: dict) -> list[str]:
             voice = defaults.get("audio") or {}
             text = composed(ws, styles, entry, "audio") or ""
             if (
-                audio_cmd.fingerprint(text, voice.get("model"), voice.get("voice_asset"))
+                audio_cmd.fingerprint(
+                    text, audio_cmd.shot_model(voice.get("model"), entry), audio_cmd.voice_key(voice)
+                )
                 != audio["made_from"]
             ):
                 out.append("audio was made from different narration")
