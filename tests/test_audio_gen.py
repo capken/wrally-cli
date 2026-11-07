@@ -57,6 +57,21 @@ async def test_gen_writes_prompt_then_model_then_submits(ready):
     assert order == ["list", "edit_content", "set_model", "list", "shotlist_generate_audio"]
 
 
+async def test_reference_voice_sends_voice_fields_and_they_count_as_input(ready):
+    """参考音色也能带 voice_fields（如语速）；改了它旁白算输入变了。"""
+    from wrally.commands.check import stale
+
+    ws, remote = ready
+    defaults = {"model": "aud1", "voice_asset": "voice1", "voice_name": "旁白男声"}
+    edit(ws, defaults={"audio": defaults | {"voice_fields": {"audio_speech_rate": 15}}})
+    await run(ws, remote, "02")
+    config = json.loads(extra(remote, "s02")["gen_config"])["audio"]
+    assert config["audioFieldValues"] == {"audio_speech_rate": 15}
+    assert stale(ws, ws.load(), entry(ws, "02")) == []
+    edit(ws, defaults={"audio": defaults})
+    assert stale(ws, ws.load(), entry(ws, "02")) == ["audio was made from different narration"]
+
+
 async def test_audio_model_overrides_the_default_for_one_shot(ready):
     """单镜写 audio_model：这一镜用它（分组各写一次 set_model），其余镜照旧；指纹随之变化。"""
     from wrally.commands.check import stale

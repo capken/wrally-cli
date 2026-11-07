@@ -42,6 +42,19 @@ async def test_audio_submits_with_voice_and_downloads(tmp_path, remote):
     assert "dl.example.com" not in (out / gen.LOG).read_text()  # 下载地址不落进记录
 
 
+async def test_minimax_preset_goes_into_audio_field_values(tmp_path, remote):
+    params = {"prompt": "x", "model": "MiniMax-2.8-HD", "count": 1, "voices": [], "preset": "badao_shaoye"}
+    await gen.gen(remote, "audio", params, tmp_path)
+    req = remote.canvas_requests[0]
+    assert req["audio_field_values"] == {"voice": "badao_shaoye"} and "ref_audios" not in req
+
+
+async def test_fields_go_into_audio_field_values_with_reference_voice(tmp_path, remote):
+    await gen.gen(remote, "audio", audio_params(fields={"audio_speech_rate": 15}), tmp_path)
+    req = remote.canvas_requests[0]
+    assert req["audio_field_values"] == {"audio_speech_rate": 15} and req["ref_audios"] == ["voiceA"]
+
+
 async def test_same_inputs_skip_and_again_makes_new_batch(tmp_path, remote):
     out = tmp_path
     await gen.gen(remote, "audio", audio_params(), out)
@@ -96,6 +109,7 @@ async def test_server_rejection_marks_failed_and_allows_retry(tmp_path, remote, 
         ("image", {"prompt": "x", "model": "img9", "count": 5}, "bad_count"),
         ("audio", {"prompt": "x", "model": "MiniMax-2.8-HD", "voices": ["v"]}, "no_ref_audio"),
         ("audio", {"prompt": "  ", "model": "aud9"}, "missing_prompt"),
+        ("audio", {"prompt": "x", "model": "aud9", "preset": "badao_shaoye"}, "no_preset"),
     ],
 )
 async def test_preflight_rejects_before_submitting(tmp_path, remote, kind, params, code):

@@ -106,6 +106,8 @@ def validate(kind: str, model: canvas.Model, params: dict) -> None:
             bad("duration", params["duration"], model.durations)
         if params.get("sound") and not model.sound:
             raise PreflightError("no_sound", f"({model.name} cannot generate sound)")
+    if kind == "audio" and params.get("preset") and not model.minimax:
+        raise PreflightError("no_preset", f"({model.name} has no preset voices; use --voice)")
     if kind == "audio" and params.get("voices"):
         if model.minimax:
             raise PreflightError("no_ref_audio", f"({model.name} does not take reference audio)")

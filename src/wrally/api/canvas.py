@@ -129,7 +129,7 @@ async def prepare(
     """把参数组装成提交请求；参考图、首尾帧在这里换成固定地址。只读，失败了也没有提交任何东西。
 
     params 是 commands/gen.py 整理好的参数：prompt、model、count，以及各类自己的
-    aspect、resolution、duration、mode、image、last、sound、refs、voices、lyrics。
+    aspect、resolution、duration、mode、image、last、sound、refs、voices、preset、fields、lyrics。
     """
     args: dict = {"prompt": params["prompt"], "model": params["model"], "count": params.get("count", 1)}
     if params.get("name"):
@@ -165,6 +165,9 @@ async def prepare(
         args["mode"] = "audio"
         if params.get("voices"):
             args["ref_audios"] = list(params["voices"])  # 接受媒资 ID，不用换地址
+        values = ({"voice": params["preset"]} if params.get("preset") else {}) | (params.get("fields") or {})
+        if values:
+            args["audio_field_values"] = values  # MiniMax 预置音色、语速等模型参数
     elif kind == "music":
         tool = "canvas_generate_audio"
         args["mode"] = "music"

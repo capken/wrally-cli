@@ -714,6 +714,13 @@ def gen_audio(
     voice: Annotated[
         list[str] | None, typer.Option("--voice", help="参考音色的媒资 ID，可多次（MiniMax 模型不接受）")
     ] = None,
+    preset: Annotated[
+        str | None, typer.Option("--preset", help="预置音色 ID，只用于 MiniMax 模型（如 badao_shaoye）")
+    ] = None,
+    field: Annotated[
+        list[str] | None,
+        typer.Option("--field", help="模型参数 名=数值，可多次（如 audio_speech_rate=15）"),
+    ] = None,
     count: CountOpt = 1,
     out: OutOpt = Path("."),
     name: NameOpt = None,
@@ -728,6 +735,17 @@ def gen_audio(
     """生成配音或音效（消耗额度）。提示词里写台词和说话方式。"""
     params = {"prompt": _prompt(prompt, prompt_file), "model": model, "count": count, "voices": voice or [],
               "name": name}  # fmt: skip
+    if preset:  # 不用预置音色时不写这个键：保持旧提交记录的指纹不变
+        params["preset"] = preset
+    if field:
+        fields = {}
+        for item in field:
+            name, sep, value = item.partition("=")
+            if not sep or not name.strip():
+                raise PreflightError("bad_field", f"({item!r}; use name=value)")
+            value = value.strip()
+            fields[name.strip()] = int(value) if value.lstrip("-").isdigit() else value
+        params["fields"] = fields
     _gen("audio", params, out, project, no_wait, timeout, again, dry_run, as_json, verbose)
 
 

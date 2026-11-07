@@ -41,9 +41,11 @@ def fingerprint(prompt: str, model: str, voice: str) -> str:
 def voice_key(audio_defaults: dict) -> str:
     """音色的身份，进输入指纹：参考音色是媒资 ID，预置音色是 preset:<ID> 加上额外字段。"""
     preset = audio_defaults.get("voice_preset")
-    if not preset:
-        return str(audio_defaults.get("voice_asset") or "")
     fields = audio_defaults.get("voice_fields") or {}
+    if not preset:
+        asset = str(audio_defaults.get("voice_asset") or "")
+        # 不写 voice_fields 时保持原样，旧清单的指纹不变
+        return asset + ("|" + json.dumps(fields, ensure_ascii=False, sort_keys=True) if fields else "")
     return "preset:" + json.dumps({"voice": preset, **fields}, ensure_ascii=False, sort_keys=True)
 
 
@@ -99,7 +101,8 @@ async def gen(
         raise PreflightError(
             "template_with_preset", "(set defaults.narration_template: null when using voice_preset)"
         )
-    field_values = {"voice": preset, **(defaults.get("voice_fields") or {})} if preset else None
+    # 预置音色写进 voice；voice_fields（如 audio_speech_rate）参考音色也能用
+    field_values = ({"voice": preset} if preset else {}) | (defaults.get("voice_fields") or {}) or None
     voice_id = voice_key(defaults)
     series_id, project_id = data["series_id"], data["project_id"]
     report = GenReport(noun="audio")
