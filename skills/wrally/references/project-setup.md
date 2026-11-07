@@ -32,6 +32,7 @@ defaults:
   image: {model: <图片模型 ID>, resolution: 4, aspect: "16:9", count: 2}
   video: {model: <视频模型 ID>, resolution: 1, duration: 8, audio: false}
   audio: {model: <旁白模型 ID>, voice_asset: <音色的媒资 ID>, voice_name: <绑定用的音色名>}
+  upscale: {model: <超分模型 ID 或名称>, scale: "2"}  # video upscale 用（可选），不写就用远端默认
   style_suffix: styles/look.md            # 关键帧公共风格后缀（可选）
   anim_prefix: styles/look_anim.md        # 动画公共前缀（可选）
   narration_template: styles/narration.md # 旁白模板（可选），里面用 {voice_name}、{narration}
@@ -116,7 +117,7 @@ wrally 不做合成，也不调用合成脚本。`wrally export` 写出 `.wrally
   "shots": [
     {
       "key": "07",
-      "video": ".wrally/video/07.mp4", "video_seconds": 8.096,
+      "video": ".wrally/video/07.mp4", "video_seconds": 8.096, "video_upscale": null,
       "audio": ".wrally/audio/07.wav", "audio_seconds": 9.74,
       "narration": "…",
       "skip": [],
@@ -130,6 +131,7 @@ wrally 不做合成，也不调用合成脚本。`wrally export` 写出 `.wrally
 ```
 
 - 路径相对单集目录；脚本最好先切到单集目录再读。
+- `video` 是合成该用的视频：有从现在这条视频做的超分版（`video upscale`）时就是超分版，`video_upscale` 是倍数（如 `"2"`），否则为 `null`。超分版过期（视频后来换了）时带原视频，`stale` 里有一条 `upscale was made from an older video`。
 - `missing` 列出 `video`、`audio`、`narration` 里缺的；`stale` 是过期判断的原文。缺素材时 `export` 照常导出、退出码仍是 0，要不要紧由脚本决定。
 - `extra`：清单顶层和每镜里 wrally 不认识的键，原样带出（顶层的是项目文件和单集清单合并后的值）。合成要的参数就放在这种键里。里面的相对路径 wrally 不解析：约定是先按单集目录找，找不到再按 `project_dir` 找。
 - `output` 是成片该写到的位置。合成完跑一次 `wrally page`，进度网页才会带上成片。

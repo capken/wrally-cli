@@ -41,6 +41,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `wait <kind>`、`fetch <kind>` | 等任务完成；下载最新结果。`kind` 是 `keyframe`、`video`、`audio` | 是 | 否 |
 | `new --shots 00-11,99 [--name …] [--dry-run]` | 新建剧集和场次并建好清单 | 是，**建远端数据** | 否 |
 | `keyframe gen`、`video gen`、`audio gen` | 生成。都有 `--shots --dry-run --wait --fetch --redo`；**默认只提交**，要等待和下载加 `--wait --fetch` | 是 | **是** |
+| `video upscale [--shots] [--scale 2\|4] [--model …] [--dry-run]` | 给每镜现在用的视频做超分，**默认等待并下载**到 `.wrally/video/<镜号>-x<倍数>.mp4`；`export` 优先带超分版 | 是 | **是** |
 | `smoke [--only …] [--resume] [--dry-run]` | 真实调用一遍：依次生成图像、配音、5 秒视频并检查文件 | 是 | **是** |
 | `login` | 浏览器授权（凭证过期时） | 是 | 否 |
 
@@ -56,7 +57,8 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 4. **视频**：`wrally video gen --dry-run` → 确认 → `wrally video gen --wait --fetch`。
 5. **旁白**：`wrally audio gen --dry-run` → 确认 → `wrally audio gen --wait --fetch`。
 6. **检查**：`wrally check`，只看有警告的镜头；需要看画面时读 `.wrally/sheets/<镜号>.jpg`（小图）。返修就改提示词或台词，重跑对应的 `gen`，用 `--shots` 限定范围。
-7. **合成**：`wrally export`，然后运行这部片子自己的合成脚本（见项目说明文件），最后 `wrally page` 让进度网页带上成片。
+7. **超分（可选，用户要时才做）**：`wrally video upscale --dry-run` → 确认 → `wrally video upscale`。超分的是清单里每镜现在用的那条视频；之后视频换了，超分版算过期，`export` 自动改回原视频，要再超分一次。合成脚本若把片段缩到固定尺寸，超分不起作用，先看项目的合成说明。
+8. **合成**：`wrally export`，然后运行这部片子自己的合成脚本（见项目说明文件），最后 `wrally page` 让进度网页带上成片。
 
 ## 提示词怎么写
 
@@ -68,7 +70,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 
 ## 几条要守的规矩
 
-**生成前先演练并让用户确认。** `keyframe gen`、`video gen`、`audio gen` 消耗真实额度。先 `--dry-run` 看会提交哪些镜头，把镜号告诉用户，得到同意再提交。输入没变的镜头会自动跳过，所以整集重跑是安全的；`--redo` 会无条件重新生成，只在用户明确要重做时用，并用 `--shots` 限定。
+**生成前先演练并让用户确认。** `keyframe gen`、`video gen`、`audio gen`、`video upscale` 消耗真实额度。先 `--dry-run` 看会提交哪些镜头，把镜号告诉用户，得到同意再提交。输入没变的镜头会自动跳过，所以整集重跑是安全的；`--redo` 会无条件重新生成，只在用户明确要重做时用，并用 `--shots` 限定。
 
 **`push` 和 `new` 也先 `--dry-run`。** `push` 覆盖远端的提示词（写之前的原文会备份到 `.wrally/raw/history/`）；`new` 在远端建剧集和场次。
 
@@ -94,6 +96,8 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `missing_asset_id` | 这一镜还没选关键帧，先 `keyframe pick` |
 | `no_manifest` | 当前目录不是单集目录。项目目录下加 `-C <单集目录>`；全新的目录先 `pull` 或 `new` |
 | `check` 报 `… was made from different …` | 素材是用旧的输入做的（台词或提示词改过而没重做）。重跑对应的 `gen` |
+| `missing_video` | `video upscale` 选中的镜头还没有视频。先 `fetch video`，或用 `--shots` 避开 |
+| `bad_scale`、`unknown_model`（超分） | 倍数或超分模型不在远端给的可选项里，提示里列出了可选值 |
 | `unpushed_prompts` | 本地提示词和远端不一致，`keyframe gen`、`video gen` 不肯提交。先 `wrally push` |
 | `login_expired`、`auth_failed`，退出码 3 | `wrally login`（会开浏览器，需要用户操作；浏览器授权后跳回本机 `127.0.0.1` 的端口，所以要在用户自己的电脑上跑，云端沙箱里跑不通） |
 | `connect_failed`、`network_error`，退出码 3 | 网络问题，稍后重试；如果是在提交生成之后才断的，按上面「提交超时不要重试」处理 |
@@ -113,6 +117,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | 命令 | 只提交 | 之后接着等、接着下载 |
 | --- | --- | --- |
 | `keyframe gen`、`video gen`、`audio gen`（一集里的镜头） | 不加 `--wait`（默认就只提交） | `wrally wait <kind> --timeout <秒>`，完成后 `wrally fetch <kind>` |
+| `video upscale` | 加 `--no-wait` | 同一条命令不加 `--no-wait` 再跑（输入没变不会重新提交，只接着等和下载） |
 | `gen image\|video\|audio\|music`（单独生成） | 加 `--no-wait` | `wrally gen fetch -o <目录> --timeout <秒>` |
 | `smoke`（接口测试） | 不能只提交；`--timeout` 或 `WRALLY_MAX_WAIT` 到点就停 | `wrally smoke --resume` |
 

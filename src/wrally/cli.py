@@ -32,6 +32,7 @@ from wrally.commands import pull as pull_cmd
 from wrally.commands import push as push_cmd
 from wrally.commands import smoke as smoke_cmd
 from wrally.commands import status as status_cmd
+from wrally.commands import upscale as upscale_cmd
 from wrally.commands import verify as verify_cmd
 from wrally.commands import video as video_cmd
 from wrally.commands import wait as wait_cmd
@@ -402,7 +403,7 @@ def keyframe_sheet(shots: ShotsOpt = "all", directory: DirOpt = Path("."), as_js
     _emit(f"keyframe sheets: {made} written  -> .wrally/sheets/", keyframe_cmd.SHEET_HEADERS, rows, as_json)
 
 
-video_app = typer.Typer(no_args_is_help=True, help="视频：gen 按选定关键帧生成")
+video_app = typer.Typer(no_args_is_help=True, help="视频：gen 按选定关键帧生成，upscale 超分")
 app.add_typer(video_app, name="video")
 
 
@@ -449,6 +450,55 @@ def video_gen(
             f"{report.summary}; {waited.summary}{tail}", headers, final.rows, as_json, details="episode.yaml"
         )
         failed += waited.failed + waited.timed_out + (fetched.failed if fetched else 0)
+    if failed:
+        raise typer.Exit(1)
+
+
+@video_app.command("upscale")
+@handle_errors
+@refreshes_page
+def video_upscale(
+    shots: ShotsOpt = "all",
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="超分模型 ID 或名称；默认取 defaults.upscale.model，再取远端默认"),
+    ] = None,
+    scale: Annotated[
+        str | None, typer.Option("--scale", help="倍数，2 或 4；默认取 defaults.upscale.scale，再取远端默认")
+    ] = None,
+    no_wait: Annotated[
+        bool, typer.Option("--no-wait/--wait", help="--no-wait 只提交；默认提交后等待并下载，重跑接着等")
+    ] = False,
+    redo: Annotated[bool, typer.Option("--redo", help="即使输入没变（或上次提交超时）也重新提交")] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="只校验模型和倍数、列出会提交哪些镜头，不提交")
+    ] = False,
+    timeout: Annotated[float, typer.Option("--timeout", help="等待的最长秒数")] = 1200,
+    directory: DirOpt = Path("."),
+    as_json: JsonOpt = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """给每镜现在用的视频做超分（消耗额度），结果下载到 .wrally/video/<镜号>-x<倍数>.*，export 优先带它。"""
+    ws = Workspace(directory)
+
+    async def work(client: McpClient) -> tuple:
+        report = await upscale_cmd.upscale(ws, client, shots, model=model, scale=scale, redo=redo,
+                                           dry_run=dry_run)  # fmt: skip
+        if dry_run or no_wait:
+            return report, None
+        return report, await upscale_cmd.collect(ws, client, shots, timeout=_limit(timeout))
+
+    report, collected = _remote(verbose, work)
+    if collected is None:
+        _emit(report.summary, upscale_cmd.HEADERS, report.rows, as_json, details="episode.yaml")
+        failed = report.failed
+    else:
+        # 提交出错的镜头不在等待结果里，并进表格，免得被埋掉
+        errors = [r for r in report.rows if r[1].startswith("error")]
+        rows = errors + [r for r in collected.rows if r[0] not in {e[0] for e in errors}]
+        line = f"{report.summary}; {collected.waited}"
+        _emit(line, upscale_cmd.HEADERS, rows, as_json, details="episode.yaml")
+        failed = report.failed + collected.failed + collected.timed_out
     if failed:
         raise typer.Exit(1)
 

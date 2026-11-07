@@ -43,6 +43,7 @@ def test_every_shot_is_listed_in_order_with_relative_paths(cut):
         "key": "02",
         "video": ".wrally/video/02.mp4",
         "video_seconds": 8.096,
+        "video_upscale": None,
         "audio": ".wrally/audio/02.wav",
         "audio_seconds": 3.5,
         "narration": "台词02。",

@@ -49,6 +49,7 @@ def stale(ws: Workspace, data: dict, entry: dict) -> list[str]:
     """
     # 放在函数里导入：生成命令的模块很重，check 的其余部分用不到
     from wrally.commands import audio as audio_cmd
+    from wrally.commands import upscale as upscale_cmd
     from wrally.commands import video as video_cmd
     from wrally.prompts import composed, load_styles
 
@@ -76,6 +77,8 @@ def stale(ws: Workspace, data: dict, entry: dict) -> list[str]:
                 out.append("video was made from a different keyframe or prompt")
     except WrallyError:
         pass  # 提示词拼不出来由 lint 报，这里不重复
+    if upscale_cmd.is_stale(entry):  # 不以 video 开头：页面上原视频照常显示为完成
+        out.append("upscale was made from an older video")
     return out
 
 

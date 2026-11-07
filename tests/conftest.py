@@ -100,6 +100,20 @@ CANVAS_MODELS = {
         ],
         "music_models": [{"model_id": "mus1", "name": "MiniMax-music3.0", "restrictions": {}}],
     },
+    # 视频超分的字段配置：结构照真实返回（2026-11-07）裁剪
+    "canvas_upscale_config": {
+        "video": {
+            "tool_id": "video_hires", "schema_source": "composer_schema",
+            "submit_tool": "canvas_upscale_video",
+            "fields": [
+                {"name": "model", "type": "select", "required": True, "default_value": "up2",
+                 "options": [{"label": "UpScale-02-v2", "value": "up2"},
+                             {"label": "UpScale-01-v2", "value": "up1"}]},
+                {"name": "scale", "type": "select", "required": True, "default_value": "2",
+                 "options": [{"label": "2", "value": "2"}, {"label": "4", "value": "4"}]},
+            ],
+        },
+    },
 }  # fmt: skip
 
 
@@ -124,6 +138,7 @@ class FakeWorkRally:
         self.series: list[dict] = []
         self.create_returns_id = True
         self.add_outcome = "ok"  # ok / timeout（已受理但响应丢了）
+        self.upscale_unreadable: set[str] = set()  # 服务端读不到宽高时长、不提交的视频
 
     def add_result(self, story_id: str, kind: str, asset_id: str, created: str, content: bytes = b"x",
                    title: str | None = None) -> None:  # fmt: skip
@@ -169,6 +184,19 @@ class FakeWorkRally:
             self.canvas_requests.append(arguments)
             if self.submit_outcome == "timeout":
                 raise NetworkError(hint="generate TimeoutError")
+            return {"task_ids": ids}
+        if tool == "canvas_upscale_video":
+            from wrally.errors import NetworkError
+
+            assert retry is False, "提交超分不允许自动重试"
+            if self.submit_outcome == "lost":
+                raise NetworkError(hint="upscale TimeoutError")
+            self.canvas_requests.append(arguments)
+            readable = [a for a in arguments["asset_ids"] if a not in self.upscale_unreadable]
+            ids = [f"u{len(self.canvas) + i + 1}" for i in range(len(readable))]
+            self.canvas.update({i: {"status": "running", "assets": []} for i in ids})
+            if self.submit_outcome == "timeout":
+                raise NetworkError(hint="upscale TimeoutError")
             return {"task_ids": ids}
         if tool in CANVAS_MODELS:
             return CANVAS_MODELS[tool]

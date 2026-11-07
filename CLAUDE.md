@@ -57,7 +57,7 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 
 不涉及远端的辅助模块：`media.py`（图像比对、抽帧、音高）、`output.py`（表格和输出预算）。
 
-命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
+命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`，`video upscale` 在 `upscale.py`（接口层 `api/canvas.py` 的 `upscale_options`、`submit_upscale`）；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
 
 ## 写任何命令都要满足的约束
 
@@ -131,6 +131,14 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `canvas_generate_video` 的 `enable_sound` 远端默认 true，`submit` 一律显式写。
 - 结果用 `image.canvas_task` 查（`canvas_get_task` 返回 `status` 和 `assets`，音频也一样，2026-10-21 用场次旁白任务 ID 真实查过），下载复用 `download_assets`。
 
+**视频超分 `video upscale`**
+
+- 走画布接口 `canvas_upscale_video`，传清单里的 `video.asset_id`（不用 `shotlist_upscale_video`：它超分的是网页上「选定」的视频，MCP 改不了选定，可能和清单不是同一条）。每镜单独提交一次，任务 ID 和镜头才对得上。
+- 模型和倍数从 `canvas_upscale_config(kind=video)` 取，顺序是 选项 → `defaults.upscale` → 远端默认值；不要用生成模型的目录。`--dry-run` 也要调这一次（只读）来校验。
+- 状态在每镜的 `video.upscaled`（`made_from`、`source`、`model`、`scale`、`status`、`task`、`asset_id`、`file`）。`made_from` 是 源视频 + 模型 + 倍数 的指纹；骨架和 `gen` 一样：先落盘 `submitting`，`NetworkError` 停在 `submitting`、再跑报 `pending_submit`（`--redo` 放行），`ToolError` 和服务端没给任务 ID（读不到源片宽高时长）记 `failed`。
+- 等待和下载在 `upscale.collect`，不走 `wait`/`fetch`；重跑同一条命令就接着等。文件是 `.wrally/video/<镜号>-x<倍数>.*`，原视频的 `file` 不动。
+- `source` 和 `video.asset_id` 不同就算过期：`check.stale` 报 `upscale was made from an older video`（故意不以 `video` 开头，页面上原视频照常是完成），`export` 改带原视频。`export` 的 `video_upscale` 是倍数或 `null`。
+
 **接口测试 `wrally smoke`**
 
 - 依次跑图像 → 配音 → 视频，每步调 `gen.gen` 和 `gen.fetch`，不另写提交逻辑；参数在提交任何任务前用 `gen.validate` 全部校验。视频固定 5 秒、最低分辨率、`sound=False`，单图用图像那一步的媒资 ID，图像失败时退回纯文字。
@@ -166,10 +174,11 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1（现在会被兜底成一行 `internal_error`、退出码 4）。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
 - 项目文件、`rules`、`export` 和这次拆分之后，调用远端的命令只跑过 `pull`（2026-10-13，那四集零改动）；`push` 和三个生成命令还没跑过。离线的 `status`、`lint`、`check`、`page`、`export` 在那四集上逐一对比过。
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。
-- 后续待办（通用模板、多音色、视频样片、视频超分等）在设计文档「后续待办：通用化」。
+- 后续待办（通用模板、多音色、视频样片等）在设计文档「后续待办：通用化」。
 - 没有做：用语音识别核对旁白与台词；指定使用非最新的那条结果。
 - `wrally smoke`（2026-10-31 加）：真实跑过一次（在仓库目录，模型用选项指定）。图像（Seedream-5 Pro）和 5 秒视频（Seedance-2.0 Mini，单图用图像那一步的结果，约 110 秒）通过，这也是画布接口 `gen image`、`gen video` 单图模式第一次真实提交；配音（Seed-Audio-1.5）三次都是远端繁忙，没跑通。传了 `enable_sound=false` 的视频仍有一条有声的音轨（平均 -30.8 dB），所以 smoke 只在说明里写出有无音轨，不算失败。
 - 换参考图地址（`assets.plain_url`）真实遇到过连接超时：现在按 `RETRY_DELAYS` 重试，仍失败报 `NetworkError`；`gen` 在落盘 `submitting` 之前做完这一步（`canvas.prepare`），失败时不留下「可能已受理」的记录。
+- `video upscale`（2026-11-07 加）：只真实跑过 `--dry-run`（远端字段配置解析、默认模型 UpScale-02-v2 x2、按名称选模型、`--scale 3` 被拦下）。提交、等待、下载只有单元测试；没验证：额度消耗、要等多久、`canvas_get_task` 对超分任务的返回是否和生成一样带 `assets`、超分版的分辨率。
 - `wrally gen`（2026-10-21 加）：`gen audio` 真实跑过（一部片子的逐句配音，59 次提交，含 `--no-wait` + `gen fetch`、`--again`、同名换参数出 `-b2`），带参考音色时量出的音高与场次里绑定同一音色的结果一致；`gen image` 和 `gen video` 的单图模式由 `wrally smoke` 真实提交过一次（见 `wrally smoke` 那一条），`gen music` 和视频的首尾帧模式只真实跑过 `--dry-run` 校验，提交和下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。
 
 ## 提交
@@ -178,7 +187,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 
 ## 在真实剧集上操作时
 
-- 生成类命令（`keyframe gen`、`video gen`、`audio gen`）消耗真实额度：先 `--dry-run`，提交前先向用户确认。
+- 生成类命令（`keyframe gen`、`video gen`、`audio gen`、`video upscale`）消耗真实额度：先 `--dry-run`，提交前先向用户确认。
 - `push` 会覆盖远端的提示词：先 `--dry-run`。写之前的远端原文会自动备份到 `.wrally/raw/history/`。
 - 用哪些模型由创作项目的 `wrally.yaml` 和清单合并后的 `defaults` 决定，远端场次里已存的模型不一定是这些。
 - 不要把签名 URL 或提示词全文贴进对话或提交进仓库。`.wrally/raw/` 里的原始返回两样都有，只看结构、不要整段打印。

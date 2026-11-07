@@ -59,8 +59,13 @@ def _material(ws: Workspace, entry: dict, name: str) -> tuple[str | None, float 
 
 def collect(ws: Workspace, data: dict, spec: str = "all") -> dict[str, Any]:
     shots = []
+    from wrally.commands.upscale import current_file  # 放在函数里导入：带进画布接口的模块
+
     for entry in select(data, spec):
         video, video_seconds = _material(ws, entry, "video")
+        upscaled = current_file(ws, entry)
+        if upscaled:  # 有从现在这条视频做的超分版就用它
+            video, video_seconds = _rel(ws, upscaled), round(media.duration(upscaled), 3)
         audio, audio_seconds = _material(ws, entry, "audio")
         narration = str(entry.get("narration") or "")
         missing = [
@@ -76,6 +81,7 @@ def collect(ws: Workspace, data: dict, spec: str = "all") -> dict[str, Any]:
             "key": str(entry["key"]),
             "video": video,
             "video_seconds": video_seconds,
+            "video_upscale": str(entry["video"]["upscaled"]["scale"]) if upscaled else None,
             "audio": audio,
             "audio_seconds": audio_seconds,
             "narration": narration,

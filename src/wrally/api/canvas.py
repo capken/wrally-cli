@@ -184,3 +184,65 @@ async def submit(client: McpClient, request: Request, *, raw_path: Path | None =
     """提交一次生成，返回任务 ID（每个产物一个）。不自动重试。"""
     data = await client.call(request.tool, request.args, raw_path=raw_path, retry=False)
     return _task_ids(data)
+
+
+# ---------- 视频超分 ----------
+
+
+@dataclass
+class UpscaleOptions:
+    """canvas_upscale_config(kind=video) 给的可选项。模型和倍数都从这里取，不写死。"""
+
+    models: list[tuple[str, str]] = field(default_factory=list)  # (ID, 名称)
+    scales: list[str] = field(default_factory=list)
+    default_model: str | None = None
+    default_scale: str | None = None
+
+    def model_name(self, model_id: str) -> str:
+        return next((name for i, name in self.models if i == model_id), model_id)
+
+
+async def upscale_options(client: McpClient, raw_path: Path | None = None) -> UpscaleOptions:
+    data = await client.call("canvas_upscale_config", {"kind": "video"}, raw_path=raw_path)
+    fields = {f.get("name"): f for f in (data.get("video") or {}).get("fields") or []}
+
+    def options(name: str) -> list[tuple[str, str]]:
+        return [
+            (str(o["value"]), str(o.get("label") or o["value"]))
+            for o in (fields.get(name) or {}).get("options") or []
+            if o.get("value") is not None
+        ]
+
+    def default(name: str) -> str | None:
+        value = (fields.get(name) or {}).get("default_value")
+        return None if value in (None, "") else str(value)
+
+    return UpscaleOptions(
+        models=options("model"),
+        scales=[v for v, _ in options("scale")],
+        default_model=default("model"),
+        default_scale=default("scale"),
+    )
+
+
+async def submit_upscale(
+    client: McpClient,
+    asset_id: str,
+    *,
+    model: str,
+    scale: str,
+    project_id: str | None = None,
+    name: str | None = None,
+    raw_path: Path | None = None,
+) -> list[str]:
+    """给一条已入库的视频提交超分，返回任务 ID。一次只传一条，任务和镜头才对得上。不自动重试。
+
+    服务端读不到源片的宽高和时长时不提交这一条，返回空列表。
+    """
+    args: dict = {"asset_ids": [asset_id], "model": model, "scale": scale}
+    if project_id:
+        args["short_series_project_id"] = project_id  # 结果进项目媒资库；不传画布 ID，不建画布节点
+    if name:
+        args["task_name"] = name
+    data = await client.call("canvas_upscale_video", args, raw_path=raw_path, retry=False)
+    return _task_ids(data)
