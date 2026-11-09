@@ -57,7 +57,7 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 
 不涉及远端的辅助模块：`media.py`（图像比对、抽帧、音高）、`output.py`（表格和输出预算）。
 
-命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`，`video upscale` 在 `upscale.py`（接口层 `api/canvas.py` 的 `upscale_options`、`submit_upscale`）；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
+命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`，`video upscale` 在 `upscale.py`（接口层 `api/canvas.py` 的 `upscale_options`、`submit_upscale`）；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`；`projects`（列表）和 `projects create` 在 `projects.py`（接口层 `api/projects.py`）。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
 
 ## 写任何命令都要满足的约束
 
@@ -67,7 +67,7 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 - **单镜错误不中断其他镜头**（`common.for_each`），结束后统一汇总；鉴权错误除外。远端返回的错误只在终端打一行错误码和原始返回的路径。
 - **退出码**：0 全部成功；1 部分失败或超时；2 前置检查不通过，未提交任何任务；3 鉴权或网络错误；4 意外错误（`cli.handle_errors` 兜底，追踪栈写进凭证目录的 `last-crash.txt`，终端不打追踪栈）。用 `errors.py` 里对应的异常类型，不要靠退出码 4 表达预期内的错误。`--json` 时错误也在标准输出给一行 JSON。
 - **下载地址不出接口层**：`api/models.py` 的 `strip_urls` 在解析时丢弃所有 URL；`Asset.url` 不参与序列化和打印。命令层只拿 asset_id 和本地路径。
-- **提交生成任务、新建剧集和新建场次的调用传 `retry=False`**：超时后无法判断服务端是否已受理，自动重发可能重复消耗额度或建出重复的剧集和场次。
+- **提交生成任务、新建项目、新建剧集和新建场次的调用传 `retry=False`**：超时后无法判断服务端是否已受理，自动重发可能重复消耗额度或建出重复的项目、剧集和场次。
 - **不写进某一部片子的东西**：阈值、词表、版式、字体、合成参数都属于创作项目。代码里出现片名或某一集的经验值就是放错了地方。
 
 ## 鉴权
@@ -148,6 +148,8 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 
 **远端不可靠的地方**
 
+- `project_list` 的 `filter=1`（「我创建的」）会连回收站里的项目也返回，列全部项目时不传 `filter`；返回里的 `series_count` 等计数恒为 0，`projects` 的剧集数靠逐个项目调 `series_list`（2026-11-09 真实看到）。`project_create` 默认自动建一个空剧集，`projects create` 传 `auto_create_series: false`，各集只由 `new` 建；它返回体里没有 ID 或提交超时时按名字到 `project_list` 里找唯一的一个。
+
 - 远端的文本会被 wrally 之外的写入改回旧版（推测是网页端开着旧页面时保存造成的，未证实）。`pull` 出现意外的 `local` 时先弄清原因再 `push`。
 - 旁白可能念到一半就结束，`check` 查不出来（真实遇到过：一镜只念了前半句，时长和音高都正常）。
 - `fetch` 取的是最新一条结果，`export` 带出的台词（合成时的字幕）取清单里的 `narration`，两者没有互相校验。wrally 生成的素材靠指纹由 `check` 把关；wrally 之外生成的旁白查不出来。
@@ -178,6 +180,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 没有做：用语音识别核对旁白与台词；指定使用非最新的那条结果。
 - `wrally smoke`（2026-10-31 加）：真实跑过一次（在仓库目录，模型用选项指定）。图像（Seedream-5 Pro）和 5 秒视频（Seedance-2.0 Mini，单图用图像那一步的结果，约 110 秒）通过，这也是画布接口 `gen image`、`gen video` 单图模式第一次真实提交；配音（Seed-Audio-1.5）三次都是远端繁忙，没跑通。传了 `enable_sound=false` 的视频仍有一条有声的音轨（平均 -30.8 dB），所以 smoke 只在说明里写出有无音轨，不算失败。
 - 换参考图地址（`assets.plain_url`）真实遇到过连接超时：现在按 `RETRY_DELAYS` 重试，仍失败报 `NetworkError`；`gen` 在落盘 `submitting` 之前做完这一步（`canvas.prepare`），失败时不留下「可能已受理」的记录。
+- `projects create`（2026-11-09 加）：真实建过一个测试项目。`project_create` 的返回是 JSON 后面再跟一行「📎 项目管理页面: <地址>」，当时解析失败（`bad_response`）而项目已建成，所以 `parse_result` 改为取文字开头的 JSON，`create` 遇到 `bad_response` 也按名字回列表找。ID 在顶层 `project_id`；传 `auto_create_series: false` 后项目确实是 0 集。写 `wrally.yaml` 这一步是在修好解析后用那次的原始返回离线核对的，没有再真实建一次。`--dry-run` 的四种拦截真实跑过。
 - `video upscale`（2026-11-07 加）：只真实跑过 `--dry-run`（远端字段配置解析、默认模型 UpScale-02-v2 x2、按名称选模型、`--scale 3` 被拦下）。提交、等待、下载只有单元测试；没验证：额度消耗、要等多久、`canvas_get_task` 对超分任务的返回是否和生成一样带 `assets`、超分版的分辨率。
 - `wrally gen`（2026-10-21 加）：`gen audio` 真实跑过（一部片子的逐句配音，59 次提交，含 `--no-wait` + `gen fetch`、`--again`、同名换参数出 `-b2`），带参考音色时量出的音高与场次里绑定同一音色的结果一致；`gen image` 和 `gen video` 的单图模式由 `wrally smoke` 真实提交过一次（见 `wrally smoke` 那一条），`gen music` 和视频的首尾帧模式只真实跑过 `--dry-run` 校验，提交和下载只有单元测试。本地文件不能直接当参考（要走 `get_upload_token` + COS 直传，没做）；视频只支持 text、firstlast 两种模式。
 

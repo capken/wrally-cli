@@ -81,15 +81,24 @@ def write_raw(path: Path, payload: Any) -> None:
         json.dump(payload, f, ensure_ascii=False, indent=1)
 
 
+def _leading_json(text: str) -> Any:
+    """文字开头的那个 JSON，后面可以跟别的文字。
+
+    project_create 在 JSON 后面加了一行「📎 项目管理页面: <地址>」。
+    """
+    try:
+        data, _ = json.JSONDecoder().raw_decode(text.lstrip())
+    except ValueError:
+        return None
+    return data
+
+
 def parse_result(tool: str, result: Any, raw_path: Path | None = None) -> Any:
     """把工具结果解析成 JSON。结果通常只有 text 内容块，里面是 JSON 字符串。"""
     text = "".join(getattr(c, "text", "") for c in result.content if getattr(c, "type", None) == "text")
     data = result.structured_content
     if data is None:
-        try:
-            data = json.loads(text)
-        except ValueError:
-            data = None
+        data = _leading_json(text)
     if raw_path is not None:
         write_raw(
             raw_path,

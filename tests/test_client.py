@@ -18,6 +18,12 @@ def test_parses_json_from_text_block():
     assert parse_result("t", result('{"head": {"code": 0}, "story_list": []}'))["story_list"] == []
 
 
+def test_json_followed_by_a_note_line():
+    """project_create 在 JSON 后面加了一行带链接的说明（2026-11-09 真实遇到）。"""
+    text = '{"head": {"code": 0}, "project_id": "p1"}\n📎 项目管理页面: https://example.com/p/p1'
+    assert parse_result("project_create", result(text))["project_id"] == "p1"
+
+
 def test_prefers_structured_content():
     assert parse_result("t", result("ignored", structured={"status": "success"})) == {"status": "success"}
 

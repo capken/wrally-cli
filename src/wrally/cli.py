@@ -28,6 +28,7 @@ from wrally.commands import keyframe_gen as keyframe_gen_cmd
 from wrally.commands import lint as lint_cmd
 from wrally.commands import new as new_cmd
 from wrally.commands import page as page_cmd
+from wrally.commands import projects as projects_cmd
 from wrally.commands import pull as pull_cmd
 from wrally.commands import push as push_cmd
 from wrally.commands import smoke as smoke_cmd
@@ -921,6 +922,54 @@ def models(
         print(output.render_json(line, headers, rows))
     else:  # 模型清单本身就是要看的内容，不按 15 行截断
         print(output.render(line, headers, rows, max_rows=max(len(rows), output.MAX_TABLE_ROWS)))
+
+
+projects_app = typer.Typer(help="短番项目：不带子命令时列出全部项目；create 新建")
+app.add_typer(projects_app, name="projects")
+
+
+@projects_app.callback(invoke_without_command=True)
+@handle_errors
+def projects(
+    ctx: typer.Context,
+    search: Annotated[str | None, typer.Option("--search", help="按名称模糊搜索")] = None,
+    trash: Annotated[bool, typer.Option("--trash", help="列回收站里的项目")] = False,
+    directory: Annotated[
+        Path, typer.Option("-C", "--dir", help="按这个目录（项目或单集目录）标出当前项目，默认当前目录")
+    ] = Path("."),
+    as_json: JsonOpt = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """列出 WorkRally 上的全部短番项目和各有几集；当前目录所属的项目标 *。"""
+    if ctx.invoked_subcommand:
+        return
+    line, rows = _remote(verbose, lambda c: projects_cmd.listing(c, directory, search=search, trash=trash))
+    headers = projects_cmd.LIST_HEADERS
+    if as_json:
+        print(output.render_json(line, headers, rows))
+    else:  # 项目清单本身就是要看的内容，不按 15 行截断
+        print(output.render(line, headers, rows, max_rows=max(len(rows), output.MAX_TABLE_ROWS)))
+
+
+@projects_app.command("create")
+@handle_errors
+def projects_create(
+    name: Annotated[str, typer.Argument(help="项目名称")],
+    canvas: Annotated[
+        str | None, typer.Option("--canvas", help="画布尺寸 宽:高，如 1920:1080（不给用远端默认）")
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="只检查重名和目录，不建")] = False,
+    directory: Annotated[
+        Path, typer.Option("-C", "--dir", help="项目目录（放 wrally.yaml、各集在它下面），默认当前目录")
+    ] = Path("."),
+    as_json: JsonOpt = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """新建短番项目（不自动建剧集），并在项目目录写出 wrally.yaml；之后在子目录里 `wrally new` 建各集。"""
+    report = _remote(
+        verbose, lambda c: projects_cmd.create(c, directory, name, canvas=canvas, dry_run=dry_run)
+    )
+    _emit(report.summary, projects_cmd.CREATE_HEADERS, report.rows, as_json, notes=tuple(report.notes))
 
 
 if __name__ == "__main__":

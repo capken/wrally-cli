@@ -1,6 +1,6 @@
 # 开一部新片子：项目目录、清单和合成
 
-目录：[目录结构](#目录结构) · [项目文件 wrally.yaml](#项目文件-wrallyyaml) · [建第一集](#建第一集) · [清单 episode.yaml](#清单-episodeyaml) · [rules](#rules) · [合成：export.json](#合成exportjson) · [给项目写说明文件](#给项目写说明文件)
+目录：[目录结构](#目录结构) · [项目文件 wrally.yaml](#项目文件-wrallyyaml) · [建项目](#建项目) · [建第一集](#建第一集) · [清单 episode.yaml](#清单-episodeyaml) · [rules](#rules) · [合成：export.json](#合成exportjson) · [给项目写说明文件](#给项目写说明文件)
 
 wrally 不绑定任何一部片子。一部片子是一个**创作项目目录**，放在 wrally-cli 仓库之外；模型、音色、画风、检查阈值、合成版式都写在这个目录里。本机如果已经有别的创作项目（目录里有 `wrally.yaml`），可以照着它的 `wrally.yaml` 和说明文件写；没有就按下文从头写。
 
@@ -8,7 +8,7 @@ wrally 不绑定任何一部片子。一部片子是一个**创作项目目录**
 
 ```
 <项目>/
-  wrally.yaml        # 项目文件：各集共用的设置。wrally 只读它，不改它
+  wrally.yaml        # 项目文件：各集共用的设置。`projects create` 生成，之后 wrally 只读它
   CLAUDE.md          # 项目说明文件（或 AGENTS.md 等）：这部片子的制作规则、模型、合成方法
   styles/  assets/   # 各集共用的公共文本、配乐等
   index.html         # 项目总览页，wrally 生成
@@ -49,6 +49,20 @@ rules:                                    # 见下文；不写就什么都不查
 - 音色名必须和旁白模板里 `<{voice_name}>` 出现的名字一致，`audio gen` 靠它绑定音色。
 - 用模型自带的预置音色（如 MiniMax）时，`defaults.audio` 写 `{model: <模型 ID>, voice_preset: <音色 ID>, voice_fields: {audio_speech_rate: 1.0}}`，不写 `voice_asset`、`voice_name`，不绑定参考音频；`voice_fields` 可选，原样并进模型参数。这类模型把提示词原样念出来，所以要设 `narration_template: null`，否则 `audio gen` 报 `template_with_preset`。
 - wrally 不认识的顶层小节（比如给合成脚本用的 `assemble:`）可以随便加，wrally 不解释，`export` 会原样带出。
+
+## 建项目
+
+WorkRally 上还没有这部片子的项目时，在项目目录里：
+
+```
+mkdir <项目> && cd <项目>
+wrally projects create "<片名>" --dry-run   # 查重名、查目录
+wrally projects create "<片名>"             # 用户确认后
+```
+
+它在远端建项目（不自动建剧集，各集用 `new` 建），并在当前目录写出 `wrally.yaml`：`project_id`、`title`，以及注释掉的 `defaults`、`rules` 骨架，按下文填好。画布尺寸用 `--canvas 宽:高`（竖屏如 `1080:1920`），不给用远端默认。会停下的情况：远端已有同名项目（`project_exists`，多半是以前建过：把那个 ID 写进 `wrally.yaml` 沿用）、目录里的 `wrally.yaml` 已经写着 `project_id`（`project_file_exists`）、在单集目录里跑（`episode_directory`）。目录里已有不带 `project_id` 的 `wrally.yaml` 时照常建，但不改文件，提示把 ID 加进去。提交超时后会按名字到项目列表里找；不要重发。
+
+项目已经存在时不用建：`wrally projects` 列出全部项目，把对应的 ID 写进 `wrally.yaml` 的 `project_id`。
 
 ## 建第一集
 

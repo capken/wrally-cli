@@ -139,6 +139,9 @@ class FakeWorkRally:
         self.create_returns_id = True
         self.add_outcome = "ok"  # ok / timeout（已受理但响应丢了）
         self.upscale_unreadable: set[str] = set()  # 服务端读不到宽高时长、不提交的视频
+        self.projects: list[dict] = []  # project_list 的条目：project_id、project_name、trash
+        self.series_by_project: dict[str, int] = {}  # 项目 ID → 剧集数（series_list 用）
+        self.project_outcome = "ok"  # ok / timeout（响应丢了）/ lost（请求没到）/ no_id（没返回 ID）
 
     def add_result(self, story_id: str, kind: str, asset_id: str, created: str, content: bytes = b"x",
                    title: str | None = None) -> None:  # fmt: skip
@@ -160,8 +163,36 @@ class FakeWorkRally:
             return self._manage(arguments, retry)
         if tool == "series_list":
             cover = "https://cdn.example.com/cover.png"
+            if arguments["project_id"] in self.series_by_project:
+                n = self.series_by_project[arguments["project_id"]]
+                return {"series_list": [{"series_id": f"x{i}", "series_name": f"EP{i}"} for i in range(n)],
+                        "page_info": {"total": n}}  # fmt: skip
             return {"series_list": [{**s, "cover_image_url": cover} for s in self.series],
                     "page_info": {"total": len(self.series)}}  # fmt: skip
+        if tool == "project_create":
+            from wrally.errors import NetworkError
+
+            assert retry is False, "新建项目不允许自动重试"
+            if self.project_outcome == "lost":
+                raise NetworkError(hint="project_create TimeoutError")
+            made = {"project_id": f"np{len(self.projects) + 1}", "project_name": arguments["project_name"]}
+            self.projects.insert(0, made)
+            if self.project_outcome == "timeout":
+                raise NetworkError(hint="project_create TimeoutError")
+            if self.project_outcome == "bad_response":
+                raise ToolError("bad_response", tool=tool, raw_path=raw_path)
+            return (
+                {"message": "ok"} if self.project_outcome == "no_id" else {"project_id": made["project_id"]}
+            )
+        if tool == "project_list":
+            trash = arguments.get("filter") == 11
+            key = arguments.get("search_key") or ""
+            hits = [p for p in self.projects if bool(p.get("trash")) == trash and key in p["project_name"]]
+            size, page = arguments["page_size"], arguments["page"]
+            items = [{**p, "cover_image_url": "https://cdn.example.com/c.png", "series_count": 0,
+                      "created_at": "2026-10-04T10:00:00+08:00", "updated_at": "2026-10-05T10:00:00+08:00"}
+                     for p in hits[(page - 1) * size : page * size]]  # fmt: skip
+            return {"project_list": items, "page_info": {"page": page, "total": len(hits), "total_page": 0}}
         if tool == "series_create":
             assert retry is False, "新建剧集不允许自动重试"
             made = {"series_id": f"ser{len(self.series) + 1}", "series_name": arguments["name"]}

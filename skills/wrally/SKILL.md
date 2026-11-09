@@ -37,6 +37,8 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `page [--open] [--watch]` | 进度网页 `page.html`；项目目录下重建各集和总览页 | 否 | 否 |
 | `pull [--force]` | 拉场次列表，建立或更新清单和 `prompts/` | 是 | 否 |
 | `push [--shots] [--dry-run]` | 把本地提示词写到远端（只写不同的镜头） | 是，**覆盖远端** | 否 |
+| `projects [--search …] [--trash]` | 列出 WorkRally 上的全部项目（ID、名称、几集）；当前目录所属的标 `*`。找 `project_id` 用它 | 是 | 否 |
+| `projects create <名称> [--canvas 1920:1080] [--dry-run]` | 新建项目（不自动建剧集），在当前目录写出 `wrally.yaml`；同名项目已存在时不建 | 是，**建远端数据** | 否 |
 | `verify-picks [--shots]` | 核对清单选图和网页「选用」 | 是 | 否 |
 | `wait <kind>`、`fetch <kind>` | 等任务完成；下载最新结果。`kind` 是 `keyframe`、`video`、`audio` | 是 | 否 |
 | `new --shots 00-11,99 [--name …] [--dry-run]` | 新建剧集和场次并建好清单 | 是，**建远端数据** | 否 |

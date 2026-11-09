@@ -82,7 +82,7 @@ class Workspace:
         return None
 
     def project(self) -> dict[str, Any]:
-        """项目文件的内容；没有项目文件时是空的。只读，wrally 不写它。"""
+        """项目文件的内容；没有项目文件时是空的。只读：只有 projects create 在新建项目时写一次。"""
         if self._project is None:
             path = self.project_path()
             loaded = YAML(typ="safe").load(path.read_text(encoding="utf-8")) if path else None
