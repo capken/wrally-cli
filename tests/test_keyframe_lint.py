@@ -54,6 +54,18 @@ def test_pick_by_asset_id_for_images_outside_candidates(ws):
     assert "pick" not in entry(ws, "01")["keyframe"]
 
 
+def test_pick_last_frame_sits_beside_the_keyframe_and_can_be_cleared(ws):
+    give_candidates(ws, "01", ["i1", "i2", "i3"], picked="i1")
+    rows = keyframe.pick(ws, [("01", "C")], last=True)
+    assert rows == [("01", "C", "i3", "-", "")]
+    kf = entry(ws, "01")["keyframe"]
+    assert (kf["asset_id"], kf["last"], kf["last_pick"]) == ("i1", "i3", "C")
+    rows = keyframe.pick(ws, [("01", "-")], last=True)
+    assert rows == [("01", "-", "-", "C", "")]
+    kf = entry(ws, "01")["keyframe"]
+    assert "last" not in kf and "last_pick" not in kf and kf["asset_id"] == "i1"
+
+
 def test_bad_pick_changes_nothing(ws):
     give_candidates(ws, "01", ["i1", "i2"])
     before = ws.manifest_path.read_bytes()

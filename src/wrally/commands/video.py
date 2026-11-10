@@ -1,4 +1,4 @@
-"""video gen：按选定关键帧生成视频（单图模式）。
+"""video gen：按选定关键帧生成视频。没选尾帧的镜头走单图模式，选了尾帧（keyframe.last）的走首尾帧模式。
 
 顺序：本地前置检查 → 远端前置检查（提示词已 push、选图没有冲突）→ 逐镜写配置 → 回读核对 → 一次提交。
 任何一步前置检查不过都以退出码 2 结束，不提交任务。
@@ -16,7 +16,7 @@ import httpx2
 
 from wrally.api import shots as shots_api
 from wrally.api.results import get_results
-from wrally.api.video import VideoSettings, configure_single_image, submit_video
+from wrally.api.video import VideoSettings, configure, submit_video
 from wrally.commands.common import for_each, is_skipped, load_manifest, remember_web_copies, section, select
 from wrally.commands.verify import same_assets
 from wrally.errors import PreflightError, WrallyError
@@ -57,11 +57,20 @@ def video_settings(defaults: dict) -> VideoSettings:
         duration=int(video.get("duration") or 8),
         resolution=int(video.get("resolution") or 1),
         audio=bool(video.get("audio", False)),
+        firstlast_model=str(video["firstlast_model"]) if video.get("firstlast_model") else None,
     )
 
 
+def last_frame(entry: dict) -> str | None:
+    """这一镜选用的尾帧（keyframe pick --last 写入）；没有就是单图模式。"""
+    return (entry.get("keyframe") or {}).get("last") or None
+
+
 def shot_settings(settings: VideoSettings, entry: dict) -> VideoSettings:
-    """单镜的视频参数：这一镜写了 `video_duration`、`video_resolution` 就用它，其余沿用 defaults.video。"""
+    """单镜的视频参数：这一镜写了 `video_duration`、`video_resolution` 就用它，其余沿用 defaults.video。
+    选了尾帧的镜头换用 defaults.video.firstlast_model（没写就还用 model）。"""
+    if last_frame(entry) and settings.firstlast_model:
+        settings = replace(settings, model=settings.firstlast_model)
     for field_, attr, code in (
         ("video_duration", "duration", "bad_video_duration"),
         ("video_resolution", "resolution", "bad_video_resolution"),
@@ -75,8 +84,11 @@ def shot_settings(settings: VideoSettings, entry: dict) -> VideoSettings:
     return settings
 
 
-def fingerprint(asset_id: str, prompt: str, settings: VideoSettings) -> str:
-    payload = json.dumps([asset_id, prompt, settings.__dict__], ensure_ascii=False, sort_keys=True)
+def fingerprint(asset_id: str, prompt: str, settings: VideoSettings, last: str | None = None) -> str:
+    # 只放实际用到的参数：firstlast_model 已经换进 model；单图镜头的指纹和加首尾帧之前一样
+    params = {k: v for k, v in settings.__dict__.items() if k != "firstlast_model"}
+    inputs = [asset_id, prompt, params] + ([{"last": last}] if last else [])
+    payload = json.dumps(inputs, ensure_ascii=False, sort_keys=True)
     return hashlib.sha1(payload.encode()).hexdigest()[:12]
 
 
@@ -114,7 +126,9 @@ async def gen(
         raise PreflightError("missing_anim_prompt", f"({_keys(no_prompt)})")
     per_shot = {str(e["key"]): shot_settings(settings, e) for e in entries}
     prints = {
-        str(e["key"]): fingerprint(e["keyframe"]["asset_id"], prompts[str(e["key"])], per_shot[str(e["key"])])
+        str(e["key"]): fingerprint(
+            e["keyframe"]["asset_id"], prompts[str(e["key"])], per_shot[str(e["key"])], last_frame(e)
+        )
         for e in entries
     }
 
@@ -202,8 +216,8 @@ async def gen(
             raise PreflightError("pick_conflict", f"({_keys(conflicts)}; run: wrally verify-picks)")
 
     # —— 逐镜写配置 → 回读核对 ——
-    items = [(str(e["key"]), e["story_id"], e["keyframe"]["asset_id"]) for e in todo]
-    errors = await configure_single_image(client, series_id, project_id, items, per_shot, ws.raw_dir, http)
+    items = [(str(e["key"]), e["story_id"], e["keyframe"]["asset_id"], last_frame(e)) for e in todo]
+    errors = await configure(client, series_id, project_id, items, per_shot, ws.raw_dir, http)
     ready = []
     for e in todo:
         key = str(e["key"])
@@ -225,7 +239,8 @@ async def gen(
     wrong = [
         e for e in ready
         if after[e["story_id"]].keyframe_asset_id != e["keyframe"]["asset_id"]
-        or (after[e["story_id"]].gen_config.get("video") or {}).get("mode") != "Text"
+        or (after[e["story_id"]].gen_config.get("video") or {}).get("mode")
+        != ("FirstLastFrame" if last_frame(e) else "Text")
     ]  # fmt: skip
     if wrong:
         raise PreflightError("config_not_applied", f"({_keys(wrong)})")

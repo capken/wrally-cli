@@ -386,14 +386,19 @@ def keyframe_pick(
     choices: Annotated[
         list[str], typer.Argument(help="成对给出：镜号 候选序号，如 02 A 03 B；也可以直接给 asset_id")
     ],
+    last: Annotated[
+        bool, typer.Option("--last", help="选的是尾帧：这几镜的视频改走首尾帧模式；给 - 取消尾帧")
+    ] = False,
     directory: DirOpt = Path("."),
     as_json: JsonOpt = False,
 ) -> None:
-    """选定关键帧，一次可以选多镜。选哪张由人决定。"""
+    """选定关键帧（或用 --last 选尾帧），一次可以选多镜。选哪张由人决定。"""
     if len(choices) % 2:
         raise PreflightError("bad_arguments", "(give pairs: <shot> <candidate>, e.g. 02 A 03 B)")
-    rows = keyframe_cmd.pick(Workspace(directory), list(zip(choices[::2], choices[1::2], strict=True)))
-    _emit(f"picked {len(rows)} keyframes  -> episode.yaml", keyframe_cmd.PICK_HEADERS, rows, as_json)
+    pairs = list(zip(choices[::2], choices[1::2], strict=True))
+    rows = keyframe_cmd.pick(Workspace(directory), pairs, last=last)
+    noun = "last frames" if last else "keyframes"
+    _emit(f"picked {len(rows)} {noun}  -> episode.yaml", keyframe_cmd.PICK_HEADERS, rows, as_json)
 
 
 @keyframe_app.command("sheet")

@@ -120,6 +120,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 幂等靠清单里的 `made_from`（输入指纹）。提交前先把状态落盘为 `submitting` 并记下 `results_before`、`failed_before`；`wait` 也靠这组基线判断，避免把旧结果当成新任务的结果。
 - `keyframe gen`、`video gen` 要求提示词已经 `push`；`audio gen` 自己写旁白提示词。
 - `video gen` 用 `keyframe.synced`（wrally 上次写进远端的选用图）判断网页上是否被人改过。
+- 首尾帧：每镜 `keyframe.last`（`keyframe pick --last` 写）有值就写 `mode: FirstLastFrame` + `firstLastModel` + `firstLastAssets: [首帧, 尾帧]`，singleAssets 照样写首帧。模型取 `defaults.video.firstlast_model`，经 `video.shot_settings` 换进 `model`；`firstlast_model` 本身不进指纹，尾帧只在有值时才加进指纹，所以单图镜头的指纹和以前一样。
 - 单镜要换视频时长就在清单里给这一镜写 `video_duration`，要换分辨率就写 `video_resolution`（Seedance-2.0 Mini：1 是 480p、3 是 720p），不要改 `defaults.video` 里的对应值：它们计入每镜的输入指纹，改默认值会让整集的视频都被判为输入变了。指纹一律经 `video.shot_settings` 取参数。旁白同理：单镜换模型写 `audio_model`（模型 ID），指纹经 `audio.shot_model` 取；`audio gen` 按模型分组，每组一次 `set_model`。
 
 **单独生成 `wrally gen`**
@@ -168,6 +169,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 每镜视频时长 `video_duration` 除单元测试外只真实用过一镜。
 - `McpClient` 的断线重连没有测试。
 - 每镜视频分辨率 `video_resolution`（2026-10-20 加）只有单元测试。
+- 场次视频首尾帧（2026-11-10 加）只有单元测试。`firstLastAssets` 每项的格式是照 singleAssets 推的：工具说明只给了字段名，本地也没有网页上配过首尾帧的场次样本。第一次真实用之前，最好先在网页上给一镜配好首尾帧，`pull` 后看 `.wrally/raw/` 里它的结构。
 - 每镜旁白模型 `audio_model`（2026-11-01 加）：两种模型混在一次提交里只有单元测试。
 - 预置音色 `voice_preset`（加 `voice_fields`，不绑定参考音频、不能配旁白模板）只有单元测试，没有真实提交过。
 - 进度网页上的推荐候选图（每镜 `suggest`）只有单元测试，没有在真实浏览器里看过。

@@ -73,7 +73,8 @@ def stale(ws: Workspace, data: dict, entry: dict) -> list[str]:
         if video.get("made_from") and pick:
             prompt = composed(ws, styles, entry, "anim") or ""
             settings = video_cmd.shot_settings(video_cmd.video_settings(defaults), entry)
-            if video_cmd.fingerprint(pick, prompt, settings) != video["made_from"]:
+            last = video_cmd.last_frame(entry)  # 尾帧也算在 keyframe 里
+            if video_cmd.fingerprint(pick, prompt, settings, last) != video["made_from"]:
                 out.append("video was made from a different keyframe or prompt")
     except WrallyError:
         pass  # 提示词拼不出来由 lint 报，这里不重复

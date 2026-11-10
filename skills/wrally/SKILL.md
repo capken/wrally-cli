@@ -32,7 +32,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `lint [--shots]` | 检查本地提示词和台词 | 否 | 否 |
 | `check [--shots]` | 抽帧拼图、时长、音高、素材是否过期 → `.wrally/report.md` | 否 | 否 |
 | `keyframe sheet [--shots]` | 候选关键帧对比图 → `.wrally/sheets/` | 否 | 否 |
-| `keyframe pick 02 A 03 B …` | 选定关键帧（只改本地） | 否 | 否 |
+| `keyframe pick 02 A 03 B …` | 选定关键帧（只改本地）；加 `--last` 选的是尾帧，这几镜的视频改走首尾帧模式，给 `-` 取消 | 否 | 否 |
 | `export [--shots]` | 合成要用的输入 → `.wrally/export.json` | 否 | 否 |
 | `page [--open] [--watch]` | 进度网页 `page.html`；项目目录下重建各集和总览页 | 否 | 否 |
 | `pull [--force]` | 拉场次列表，建立或更新清单和 `prompts/` | 是 | 否 |
@@ -56,7 +56,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 1. **建档**。新的一集：`wrally new --shots 00-11,99 --name "EP5 …" --dry-run`，确认后去掉 `--dry-run`。可以先手写清单条目（不写 `story_id`）和 `prompts/` 再跑 `new`：条目按镜号认领，本地提示词保留，建完直接走第 2 步的 `lint` → `push`。远端已有场次的：`wrally pull --project <ID> --series <ID>`（有项目文件时不用给 `--project`）。
 2. **写提示词和台词**。编辑 `prompts/<镜号>.image.md`、`.anim.md` 和清单里的 `narration`，然后 `wrally lint`，再 `wrally push --dry-run` → `wrally push`。
 3. **关键帧**：`wrally keyframe gen --dry-run` → 用户确认 → `wrally keyframe gen --wait --fetch`。把 `.wrally/sheets/keyframes-<镜号>.jpg` 给用户看，等用户说选哪张，再 `wrally keyframe pick 02 A 03 B …`。
-4. **视频**：`wrally video gen --dry-run` → 确认 → `wrally video gen --wait --fetch`。
+4. **视频**：`wrally video gen --dry-run` → 确认 → `wrally video gen --wait --fetch`。某一镜要指定结束画面时，先 `wrally keyframe pick 03 C --last` 选尾帧（候选序号或 asset_id），这一镜就走首尾帧模式；首尾帧模式还没有真实提交过，第一次用时告诉用户。
 5. **旁白**：`wrally audio gen --dry-run` → 确认 → `wrally audio gen --wait --fetch`。
 6. **检查**：`wrally check`，只看有警告的镜头；需要看画面时读 `.wrally/sheets/<镜号>.jpg`（小图）。返修就改提示词或台词，重跑对应的 `gen`，用 `--shots` 限定范围。
 7. **超分（可选，用户要时才做）**：`wrally video upscale --dry-run` → 确认 → `wrally video upscale`。超分的是清单里每镜现在用的那条视频；之后视频换了，超分版算过期，`export` 自动改回原视频，要再超分一次。合成脚本若把片段缩到固定尺寸，超分不起作用，先看项目的合成说明。

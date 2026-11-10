@@ -30,7 +30,7 @@ title: <片名>                      # 总览页的标题
 
 defaults:
   image: {model: <图片模型 ID>, resolution: 4, aspect: "16:9", count: 2}
-  video: {model: <视频模型 ID>, resolution: 1, duration: 8, audio: false}
+  video: {model: <视频模型 ID>, resolution: 1, duration: 8, audio: false}   # 可加 firstlast_model: 首尾帧镜头用的模型
   audio: {model: <旁白模型 ID>, voice_asset: <音色的媒资 ID>, voice_name: <绑定用的音色名>}
   upscale: {model: <超分模型 ID 或名称>, scale: "2"}  # video upscale 用（可选），不写就用远端默认
   style_suffix: styles/look.md            # 关键帧公共风格后缀（可选）
@@ -92,6 +92,7 @@ wrally new --shots 00-11,99 --name "EP1 <标题>" --title "<标题>"            
 | 每镜 `skip: [keyframe]` | 这一镜永远不由 wrally 生成这类素材（`keyframe`、`video`、`audio`） |
 | 每镜 `video_duration` | 只给这一镜换视频时长（秒） |
 | 每镜 `video_resolution` | 只给这一镜换视频分辨率（Seedance-2.0 Mini：1 是 480p、3 是 720p） |
+| 每镜 `keyframe.last` | 这一镜的尾帧（媒资 ID），有它视频就走首尾帧模式；用 `wrally keyframe pick 03 C --last` 写，不要手写。模型用 `defaults.video.firstlast_model`，没写就用 `defaults.video.model`（`wrally models video` 里要支持 firstlast） |
 | 每镜 `audio_model` | 只给这一镜换旁白模型（模型 ID，`wrally models audio` 查） |
 | 每镜 `suggest: {keyframe: B, note: 理由}` | 推荐的候选关键帧，只在进度网页上标出来（虚线框加「推荐」角标；没选图时主图先显示它），不算选图 |
 | 每镜 `keyframe.refs: ["04", "06"]` | 用这些镜头的定稿关键帧作参考图生成（画布图生图；引用 `ref_assets` 真实跑通过，引用镜号的定稿关键帧还没有真实验证过，用之前告诉用户）。一项也可以是顶层 `ref_assets` 里登记的名字，取对应的媒资（如角色设定图），镜号优先；两者都不是时 `lint` 报错、生成报 `unknown_ref`。提示词里用「第一张图片」「第二张图片」按 `refs` 的顺序引用 |

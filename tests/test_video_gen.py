@@ -1,12 +1,15 @@
+import hashlib
 import io
 import json
+from dataclasses import replace
 
 import pytest
 from conftest import entry, set_web_copy
 from PIL import Image
 
+from wrally.api.video import VideoSettings
 from wrally.commands.push import push
-from wrally.commands.video import gen
+from wrally.commands.video import fingerprint, gen
 from wrally.commands.wait import wait
 from wrally.errors import NetworkError, PreflightError
 
@@ -66,6 +69,41 @@ async def test_gen_writes_single_image_config_verifies_then_submits_once(ready):
     )
     assert len(video["made_from"]) == 12 and entry(ws, "02")["keyframe"]["synced"] == "key02"
     assert remote.submissions == [["s02"]]
+
+
+async def test_shot_with_last_frame_uses_first_last_mode_and_its_own_model(ready):
+    ws, remote = ready
+    remote.add_asset("end02", "image", png((30, 30, 200)), "02-end.png")
+    edit(ws, defaults={"video": {"model": "vid1", "firstlast_model": "fl1", "duration": 8}})
+    single = await run(ws, remote, dry_run=True)
+    kf = entry(ws, "02")["keyframe"]
+    edit(ws, "02", keyframe=kf | {"last": "end02"})
+    report = await run(ws, remote)
+    assert report.submitted == ["02"] and single.rows == [("02", "would submit", "")]
+    item = lambda a, n: {"asset_id": a, "assetId": a, "fileType": "image", "name": n,  # noqa: E731
+                         "url": f"https://dl.example.com/{a}"}  # fmt: skip
+    config = video_config(remote)
+    assert (config["mode"], config["firstLastModel"], config["model"]) == ("FirstLastFrame", "fl1", "fl1")
+    assert config["firstLastAssets"] == [item("key02", "02.png"), item("end02", "02-end.png")]
+    assert config["singleAssets"] == [item("key02", "02.png")]  # 网页「选用」的关键帧仍从这里读
+
+
+def test_last_frame_changes_the_fingerprint_but_plain_shots_keep_theirs():
+    base = VideoSettings(model="vid1")
+    # 加首尾帧之前的算法：已生成的单图视频不能因为这次改动被判为过期
+    legacy = {"model": "vid1", "aspect": "16:9", "duration": 8, "resolution": 1, "audio": False}
+    payload = json.dumps(["k", "p", legacy], ensure_ascii=False, sort_keys=True)
+    assert fingerprint("k", "p", base) == hashlib.sha1(payload.encode()).hexdigest()[:12]
+    assert fingerprint("k", "p", replace(base, firstlast_model="fl1")) == fingerprint("k", "p", base)
+    assert fingerprint("k", "p", base, "end") != fingerprint("k", "p", base)
+
+
+async def test_missing_last_frame_asset_fails_only_that_shot(ready):
+    ws, remote = ready
+    kf = entry(ws, "02")["keyframe"]
+    edit(ws, "02", keyframe=kf | {"last": "nope"})
+    report = await run(ws, remote)
+    assert report.failed == 1 and report.rows[0][1] == "error: asset_not_found" and remote.submissions == []
 
 
 async def test_rerun_does_not_submit_again_or_even_call_remote(ready):

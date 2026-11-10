@@ -30,8 +30,15 @@ def _label(candidates: list[str], asset_id: str | None) -> str:
     return letter(candidates.index(asset_id)) if asset_id in candidates else asset_id
 
 
-def pick(ws: Workspace, pairs: list[tuple[str, str]]) -> list[tuple[str, ...]]:
-    """pairs 是 (镜号, 候选序号或 asset_id)。全部校验通过才写清单，有一个不对就什么都不改。"""
+CLEAR = ("-", "none")
+
+
+def pick(ws: Workspace, pairs: list[tuple[str, str]], *, last: bool = False) -> list[tuple[str, ...]]:
+    """pairs 是 (镜号, 候选序号或 asset_id)。全部校验通过才写清单，有一个不对就什么都不改。
+
+    last=True 时选的是尾帧（写 keyframe.last，video gen 改走首尾帧模式）；给 `-` 或 `none` 是取消尾帧。
+    """
+    field_, letter_field = ("last", "last_pick") if last else ("asset_id", "pick")
     data = load_manifest(ws)
     entries = {str(e["key"]): e for e in data["shots"]}
     resolved: list[tuple[str, str]] = []
@@ -41,7 +48,9 @@ def pick(ws: Workspace, pairs: list[tuple[str, str]]) -> list[tuple[str, ...]]:
             raise PreflightError("unknown_shot", f"({key})")
         candidates = list((entries[key].get("keyframe") or {}).get("candidates") or [])
         index = _index(choice)
-        if index is None:
+        if last and choice.lower() in CLEAR:
+            resolved.append((key, ""))
+        elif index is None:
             resolved.append((key, choice))
         elif not candidates:
             raise PreflightError("no_candidates", f"({key}; run: wrally fetch keyframe --shots {key})")
@@ -57,16 +66,19 @@ def pick(ws: Workspace, pairs: list[tuple[str, str]]) -> list[tuple[str, ...]]:
         entry = entries[key]
         kf = section(entry, "keyframe")
         candidates = list(kf.get("candidates") or [])
-        was = _label(candidates, kf.get("asset_id"))
-        changed = kf.get("asset_id") != asset_id
-        kf["asset_id"] = asset_id
-        if asset_id in candidates:
-            kf["pick"] = letter(candidates.index(asset_id))
+        was = _label(candidates, kf.get(field_))
+        changed = (kf.get(field_) or "") != asset_id
+        if asset_id:
+            kf[field_] = asset_id
         else:
-            kf.pop("pick", None)
+            kf.pop(field_, None)
+        if asset_id in candidates:
+            kf[letter_field] = letter(candidates.index(asset_id))
+        else:
+            kf.pop(letter_field, None)
         made = (entry.get("video") or {}).get("status") == "done"
         note = "video was made with the previous pick" if changed and made and was != "-" else ""
-        rows.append((key, _label(candidates, asset_id), asset_id, was, note))
+        rows.append((key, _label(candidates, asset_id), asset_id or "-", was, note))
     ws.save(data)
     return rows
 

@@ -68,7 +68,7 @@ class Shot(BaseModel):
     animation_prompt_rich: str | None = None
     audio_prompt: str = ""
     gen_config: dict[str, Any] = Field(default_factory=dict)
-    keyframe_asset_id: str | None = None  # 网页「选用」的关键帧：gen_config.video.singleAssets
+    keyframe_asset_id: str | None = None  # 网页「选用」的关键帧：video.singleAssets 或首尾帧的首帧
     video_asset_id: str | None = None  # 网页选用的视频
     voice_asset_ids: list[str] = Field(default_factory=list)
 
@@ -90,7 +90,9 @@ class Shot(BaseModel):
         """解析 shotlist_manage list 返回的一条 story。"""
         extra = _loads(story.get("extra")) or {}
         gen_config = strip_urls(_loads(extra.get("gen_config")) or {})
-        singles = (gen_config.get("video") or {}).get("singleAssets") or []
+        video = gen_config.get("video") or {}
+        # 首尾帧模式下 wrally 也写 singleAssets；网页上配的首尾帧可能只有 firstLastAssets，取它的首帧
+        singles = video.get("singleAssets") or video.get("firstLastAssets") or []
         keyframe = next((a.get("asset_id") or a.get("assetId") for a in singles if isinstance(a, dict)), None)
         voices = _loads(extra.get("audio_role_data_json")) or []
         selected = story.get("story_audit_asset_detail") or {}
