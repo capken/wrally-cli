@@ -105,6 +105,42 @@ async def test_fetch_keeps_failed_when_latest_result_is_the_old_one(ws, remote):
     assert entry(ws, "02")["audio"]["status"] == "done"
 
 
+def _awaiting(ws, status: str) -> None:
+    data = ws.load()
+    audio = next(e for e in data["shots"] if e["key"] == "02")["audio"]
+    audio.update(status=status, made_from="new-inputs", results_before=1, failed_before=0)
+    ws.save(data)
+
+
+async def test_fetch_does_not_take_an_older_result_for_the_task_it_is_waiting_for(ws, remote):
+    """改过台词重新生成，这次的任务没出新结果：远端最新的还是上一条，不能记成用新输入做好的。"""
+    remote.add_result("s02", "audio", "a1", "2026-10-05 18:00:00", b"one")
+    await fetch(ws, remote, "audio", "02", http=remote.http())
+    file = ".wrally/audio/02.wav"
+
+    _awaiting(ws, "submitting")  # 提交途中被打断，远端没有这次任务的痕迹
+    report = await fetch(ws, remote, "audio", "02", http=remote.http())
+    assert report.rows == [("02", "unconfirmed (run: wrally audio gen)", file)] and report.failed == 1
+    assert entry(ws, "02")["audio"]["status"] == "submitting"
+
+    _awaiting(ws, "running")  # 已提交，还没显示成进行中
+    report = await fetch(ws, remote, "audio", "02", http=remote.http())
+    assert report.rows == [("02", "running", file)] and report.failed == 0
+    assert entry(ws, "02")["audio"]["status"] == "running"
+
+    remote.results[("s02", "audio")]["failed"] = 1  # 这次的任务失败了，没经过 wait 直接 fetch
+    report = await fetch(ws, remote, "audio", "02", http=remote.http())
+    assert report.rows == [("02", "failed", file)] and report.failed == 1
+    assert entry(ws, "02")["audio"]["status"] == "failed"
+
+    _awaiting(ws, "submitting")
+    remote.results[("s02", "audio")]["failed"] = 0
+    remote.add_result("s02", "audio", "a2", "2026-10-05 19:00:00", b"two")  # 其实受理了，而且做完了
+    report = await fetch(ws, remote, "audio", "02", http=remote.http())
+    assert report.downloaded == 1 and entry(ws, "02")["audio"]["asset_id"] == "a2"
+    assert entry(ws, "02")["audio"]["status"] == "done"
+
+
 async def test_running_and_failed_shots_are_not_downloaded(ws, remote):
     remote.add_result("s01", "video", "w1", "2026-10-05 18:00:00")
     remote.results[("s01", "video")]["doing"] = 1

@@ -113,6 +113,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `login_expired`、`auth_failed`，退出码 3 | `wrally login`（会开浏览器，需要用户操作；浏览器授权后跳回本机 `127.0.0.1` 的端口，所以要在用户自己的电脑上跑，云端沙箱里跑不通） |
 | `connect_failed`、`network_error`，退出码 3 | 网络问题，稍后重试；如果是在提交生成之后才断的，按上面「提交超时不要重试」处理 |
 | `note: pitch not checked` | 没装量音高用的 librosa，其余检查照常 |
+| `wait`、`fetch` 的表格里出现 `unconfirmed (run: wrally <kind> gen)`，退出码 1 | 这一镜上次提交途中被打断，远端看不到这次的任务，现有的结果是以前的。重跑那条生成命令（先 `--dry-run`），它会先问远端再决定要不要提交；不要加 `--redo` |
 | `internal_error`，退出码 4 | wrally 自己的问题，追踪栈在凭证目录的 `last-crash.txt`（默认 `~/.config/wrally/`）。告诉用户，不要绕过 wrally 直接调接口。如果是提交之后出的错，任务可能已受理：先 `wait`、`status` 看状态，不要重新提交 |
 
 `check` 查不出来的两件事：旁白可能念到一半就结束（时长明显偏短的要听一遍或用语音识别核对）；wrally 之外生成的旁白没有指纹，台词改了它不会报过期。

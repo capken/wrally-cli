@@ -18,6 +18,25 @@ from wrally.workspace import Workspace
 
 KINDS = {"keyframe": "image", "video": "video", "audio": "audio"}
 STATUS = {"running": "running", "done": "done", "failed": "failed", "none": "pending"}
+AWAITING = ("submitting", "running")
+
+
+def awaited(sec: dict, done: int, failed: int) -> str:
+    """清单正在等的那次任务（标着 submitting 或 running，提交时记了基线）在远端留下了什么。
+
+    "done" 结果数超过了基线；"failed" 失败数超过了基线；"none" 什么都没留下（没受理，或还没显示出来）。
+    清单没在等任务时返回空串。远端已有的结果可能是以前的，不能当成这次任务的。
+    """
+    if sec.get("status") not in AWAITING or "results_before" not in sec:
+        return ""
+    if done > int(sec["results_before"]):
+        return "done"
+    return "failed" if failed > int(sec.get("failed_before") or 0) else "none"
+
+
+def unconfirmed(kind: str) -> str:
+    """停在 submitting、远端又没有这次任务的痕迹时表格里的说明：重跑生成命令，由它判断要不要再提交。"""
+    return f"unconfirmed (run: wrally {kind} gen)"
 
 
 @dataclass
@@ -55,7 +74,7 @@ async def fetch(ws: Workspace, client: McpClient, kind: str, spec: str = "all",
     else:
         report = await _media(ws, client, kind, entries, results, raw_assets, http)
     ws.save(data)
-    report.rows.sort(key=lambda r: not r[1].startswith(("error", "failed")))
+    report.rows.sort(key=lambda r: not r[1].startswith(("error", "failed", "unconfirmed")))
     return report
 
 
@@ -70,6 +89,17 @@ async def _media(ws, client, kind, entries, results, raw_assets, http) -> FetchR
             report.rows.append((key, error_cell(rs), ""))
             continue
         sec = entry.get(kind) or {}
+        left = awaited(sec, rs.done, rs.failed) if rs.doing == 0 else ""
+        if left in ("failed", "none"):
+            # 这次的任务没出新结果：远端现有的结果是以前的，不能下载下来记成完成
+            said = str(sec["status"])
+            if left == "failed":
+                said = section(entry, kind)["status"] = "failed"
+            elif said == "submitting":
+                said = unconfirmed(kind)
+            report.failed += said != "running"
+            report.rows.append((key, said, str(sec.get("file") or "")))
+            continue
         if rs.state != "done":
             section(entry, kind)["status"] = STATUS[rs.state]
             report.failed += rs.state == "failed"

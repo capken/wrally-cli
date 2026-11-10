@@ -118,6 +118,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 
 - 三个生成命令（`keyframe_gen.py`、`video.py`、`audio.py`）的「分类 → 恢复 → 落盘 submitting → 提交」骨架是各写一份的，改其中一个的幂等逻辑时要同步另外两个。
 - 幂等靠清单里的 `made_from`（输入指纹）。提交前先把状态落盘为 `submitting` 并记下 `results_before`、`failed_before`；`wait` 也靠这组基线判断，避免把旧结果当成新任务的结果。
+- `wait` 和 `fetch` 判断「这次的任务出没出结果」一律拿这组基线比（`fetch.awaited`），不看远端现在有没有结果：远端的结果可能是以前的。停在 `submitting` 又没有这次任务痕迹的镜头不改清单，表格里写 `unconfirmed`，留给生成命令的恢复逻辑。
 - `keyframe gen`、`video gen` 要求提示词已经 `push`；`audio gen` 自己写旁白提示词。
 - `video gen` 用 `keyframe.synced`（wrally 上次写进远端的选用图）判断网页上是否被人改过。
 - 首尾帧：每镜 `keyframe.last`（`keyframe pick --last` 写）有值就写 `mode: FirstLastFrame` + `firstLastModel` + `firstLastAssets: [首帧, 尾帧]`，singleAssets 照样写首帧。模型取 `defaults.video.firstlast_model`，经 `video.shot_settings` 换进 `model`；`firstlast_model` 本身不进指纹，尾帧只在有值时才加进指纹，所以单图镜头的指纹和以前一样。

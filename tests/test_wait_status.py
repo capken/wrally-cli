@@ -99,6 +99,33 @@ async def test_later_wait_keeps_failed_until_a_new_result_appears(ws, remote):
     assert entry(ws, "02")["audio"]["status"] == "done"
 
 
+async def test_wait_leaves_an_interrupted_submit_to_the_gen_command(ws, remote):
+    """提交途中被打断（清单停在 submitting），远端只有以前的结果：不能记成完成，状态留给生成命令判断。"""
+    remote.add_result("s02", "video", "v1", "2026-10-05 18:00:00")
+
+    def interrupted() -> None:
+        data = ws.load()
+        shot = next(e for e in data["shots"] if e["key"] == "02")
+        shot["video"] = {"status": "submitting", "made_from": "new", "results_before": 1, "failed_before": 0}
+        ws.save(data)
+
+    interrupted()
+    clock = Clock(remote, 0)
+    report = await wait(ws, remote, "video", "02", sleep=clock.sleep, clock=clock)
+    assert report.rows == [("02", "unconfirmed (run: wrally video gen)", "")] and report.failed == 1
+    assert entry(ws, "02")["video"]["status"] == "submitting" and clock.sleeps == []
+
+    remote.results[("s02", "video")]["failed"] = 1  # 其实受理了，然后失败
+    report = await wait(ws, remote, "video", "02", sleep=clock.sleep, clock=clock)
+    assert report.rows == [("02", "failed", "")] and entry(ws, "02")["video"]["status"] == "failed"
+
+    interrupted()
+    remote.results[("s02", "video")]["failed"] = 0
+    remote.add_result("s02", "video", "v2", "2026-10-05 19:00:00")  # 其实受理了，而且做完了
+    report = await wait(ws, remote, "video", "02", sleep=clock.sleep, clock=clock)
+    assert report.rows == [("02", "done", "")] and entry(ws, "02")["video"]["status"] == "done"
+
+
 def test_status_reads_only_the_manifest(ws):
     data = ws.load()
     shots = {e["key"]: e for e in data["shots"]}

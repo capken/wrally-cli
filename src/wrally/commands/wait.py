@@ -9,7 +9,7 @@ import anyio
 from wrally.api.image import canvas_task
 from wrally.api.results import get_results
 from wrally.commands.common import error_cell, flow_seq, for_each, load_manifest, section, select
-from wrally.commands.fetch import KINDS, STATUS
+from wrally.commands.fetch import AWAITING, KINDS, STATUS, awaited, unconfirmed
 from wrally.errors import WrallyError
 from wrally.transport.client import McpClient
 from wrally.workspace import Workspace
@@ -101,7 +101,7 @@ async def wait(
     await poll(entries)
     for entry in entries:
         key, p, sec = str(entry["key"]), state[str(entry["key"])], entry.get(kind) or {}
-        if "failed_before" in sec and sec.get("status") == "running":
+        if "failed_before" in sec and sec.get("status") in AWAITING:
             baseline[key] = int(sec["failed_before"])  # 提交时记下的基线最准
         elif isinstance(p, Progress) and p.state == "running":
             baseline[key] = p.failed  # 之后失败数增加，说明这次的任务失败了
@@ -128,6 +128,15 @@ async def wait(
             report.timed_out += 1
         elif not p.canvas and key in baseline and p.failed > baseline[key]:
             label = "failed"
+        elif (
+            not p.canvas
+            and (entry.get(kind) or {}).get("status") == "submitting"
+            and awaited(entry[kind], p.done, p.failed) == "none"
+        ):
+            # 提交途中被打断，远端没有这次任务的痕迹：现有的结果是以前的，状态留给生成命令去判断
+            report.failed += 1
+            report.rows.append((key, unconfirmed(kind), file))
+            continue
         elif (
             label == "done"
             and not p.canvas
