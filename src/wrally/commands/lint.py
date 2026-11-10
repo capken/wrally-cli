@@ -90,6 +90,9 @@ def lint(ws: Workspace, spec: str = "all") -> LintReport:
             refs = [str(r) for r in (entry.get("keyframe") or {}).get("refs") or []]
             if kind == "image" and (unknown := [r for r in refs if r not in shot_keys and not named.get(r)]):
                 add("error", f"image: unknown refs {','.join(unknown)} (not a shot, not in ref_assets)")
+            files = [ws.media_file(named[r]) for r in refs if r not in shot_keys and named.get(r)]
+            if kind == "image" and (gone := [p.name for p in files if p and not p.is_file()]):
+                add("error", f"image: ref file missing {','.join(gone)}")
             if kind == "image" and refs and not re.search(r"第[一二三四五六七八九十\d]+张图", body):
                 # 画布靠「第一张图片」「第二张图片」把提示词和参考图对上
                 add("warn", f"image: has {len(refs)} refs but prompt never says 第N张图片")

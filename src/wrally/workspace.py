@@ -13,6 +13,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
 from wrally.errors import PreflightError
+from wrally.localfile import is_local, local_path
 
 MANIFEST = "episode.yaml"
 PROJECT = "wrally.yaml"
@@ -22,6 +23,8 @@ PROJECT_PATHS = (
     ("defaults", "anim_prefix"),
     ("defaults", "narration_template"),
 )
+# 这些位置可以写媒资 ID，也可以写本地文件；是本地文件时同样转成绝对路径。ref_assets 的每一项也是
+MEDIA_PATHS = (("defaults", "audio", "voice_asset"),)
 
 
 def _yaml() -> YAML:
@@ -50,6 +53,13 @@ def overlay(base: Any, over: Any) -> Any:
     for key, value in over.items():
         out[str(key)] = overlay(out.get(str(key)), value)
     return out
+
+
+def to_yaml(data: Any) -> str:
+    """按清单的写法输出 YAML（保留注释和键顺序）。"""
+    buf = io.StringIO()
+    _yaml().dump(data, buf)
+    return buf.getvalue()
 
 
 def write_if_changed(path: Path, text: str) -> bool:
@@ -89,13 +99,27 @@ class Workspace:
             if loaded is not None and not isinstance(loaded, dict):
                 raise PreflightError("bad_project_file", f"({path}: need a mapping)")
             self._project = loaded or {}
-            for *parents, name in PROJECT_PATHS:
+            for *parents, name in PROJECT_PATHS + MEDIA_PATHS:
                 node: Any = self._project
                 for parent in parents:
                     node = node.get(parent) if isinstance(node, dict) else None
-                if isinstance(node, dict) and isinstance(node.get(name), str):
+                if not isinstance(node, dict) or not isinstance(node.get(name), str):
+                    continue
+                if (*parents, name) in PROJECT_PATHS or is_local(node[name]):
                     node[name] = str(path.parent / Path(node[name]).expanduser())
+            refs = self._project.get("ref_assets")
+            if path and isinstance(refs, dict):
+                for name, value in refs.items():
+                    if is_local(value):
+                        refs[name] = str(local_path(str(value), path.parent))
         return self._project
+
+    def media_file(self, value: object) -> Path | None:
+        """清单里写成本地路径的媒资（参考图、音色）→ 绝对路径；写的是媒资 ID 时返回 None。
+
+        项目文件里的相对路径读进来时已换成绝对路径，这里剩下的相对路径都相对单集目录。
+        """
+        return local_path(str(value), self.root) if is_local(value) else None
 
     def settings(self, data: dict[str, Any] | None, name: str) -> dict[str, Any]:
         """某个共用小节的生效值：项目文件打底，单集清单覆盖。单集里写 null 表示这一集不要这一项。"""
@@ -116,9 +140,7 @@ class Workspace:
         return data if data is not None else CommentedMap()
 
     def save(self, data: CommentedMap) -> bool:
-        buf = io.StringIO()
-        _yaml().dump(data, buf)
-        return write_if_changed(self.manifest_path, buf.getvalue())
+        return write_if_changed(self.manifest_path, to_yaml(data))
 
     def read_text(self, rel: str) -> str | None:
         try:

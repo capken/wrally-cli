@@ -1,6 +1,6 @@
 ---
 name: wrally
-description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作短视频（短番项目 → 剧集 → 场次）：新建或拉取一集、改提示词和台词并推送、批量生成关键帧 / 视频 / 旁白、选图、检查素材、导出给合成脚本、生成进度网页。只要任务涉及 WorkRally 上某一集或某几镜的提示词、关键帧、视频、旁白、场次、选图，或者目录里有 `episode.yaml`、`wrally.yaml`、`.wrally/`，就先用这个 skill，哪怕用户没提 wrally，也不要直接去调 WorkRally 的 MCP 工具。不属于任何一集、只想用 WorkRally 生成一张图、一段视频、一段配音或一段音乐时，也用它（`wrally gen`，不用建项目）。用户说「给第 5 镜重做视频」「这集的旁白生成一下」「看看这集进度」「把提示词推上去」「开新的一集」「用 wrally 开一部新片子」「用 WorkRally 生成一段配音/一张图」时都适用。
+description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作短视频（短番项目 → 剧集 → 场次）：新建或拉取一集、删场次和调整场次顺序、改提示词和台词并推送、批量生成关键帧 / 视频 / 旁白、选图、检查素材、导出给合成脚本、生成进度网页，以及把本地图片和音频上传成媒资。只要任务涉及 WorkRally 上某一集或某几镜的提示词、关键帧、视频、旁白、场次、选图，或者目录里有 `episode.yaml`、`wrally.yaml`、`.wrally/`，就先用这个 skill，哪怕用户没提 wrally，也不要直接去调 WorkRally 的 MCP 工具。不属于任何一集、只想用 WorkRally 生成一张图、一段视频、一段配音或一段音乐时，也用它（`wrally gen`，不用建项目）。用户说「给第 5 镜重做视频」「这集的旁白生成一下」「看看这集进度」「把提示词推上去」「开新的一集」「用 wrally 开一部新片子」「用 WorkRally 生成一段配音/一张图」「删掉第 7 镜」「把这张图传上去当参考图」时都适用。
 ---
 
 # wrally
@@ -42,6 +42,9 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `verify-picks [--shots]` | 核对清单选图和网页「选用」 | 是 | 否 |
 | `wait <kind>`、`fetch <kind>` | 等任务完成；下载最新结果。`kind` 是 `keyframe`、`video`、`audio` | 是 | 否 |
 | `new --shots 00-11,99 [--name …] [--dry-run]` | 新建剧集和场次并建好清单 | 是，**建远端数据** | 否 |
+| `shots rm 07,08 [--dry-run]` | 删场次：远端进回收站，清单去掉这几镜，条目和提示词文件挪到 `.wrally/removed/` | 是，**删远端数据** | 否 |
+| `shots order [--by-key] [--dry-run]` | 让网页上的场次顺序和清单一致；`--by-key` 先把清单按镜号排好（**会改成片顺序**） | 是，**改远端数据** | 否 |
+| `upload <文件…> [--project …] [--dry-run]` | 把本地图片、视频、音频上传成媒资，打印媒资 ID；同一个文件在同一个项目里只传一次 | 是 | 否 |
 | `keyframe gen`、`video gen`、`audio gen` | 生成。都有 `--shots --dry-run --wait --fetch --redo`；**默认只提交**，要等待和下载加 `--wait --fetch` | 是 | **是** |
 | `video upscale [--shots] [--scale 2\|4] [--model …] [--dry-run]` | 给每镜现在用的视频做超分，**默认等待并下载**到 `.wrally/video/<镜号>-x<倍数>.mp4`；`export` 优先带超分版 | 是 | **是** |
 | `smoke [--only …] [--resume] [--dry-run]` | 真实调用一遍：依次生成图像、配音、5 秒视频并检查文件 | 是 | **是** |
@@ -74,7 +77,9 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 
 **生成前先演练并让用户确认。** `keyframe gen`、`video gen`、`audio gen`、`video upscale` 消耗真实额度。先 `--dry-run` 看会提交哪些镜头，把镜号告诉用户，得到同意再提交。输入没变的镜头会自动跳过，所以整集重跑是安全的；`--redo` 会无条件重新生成，只在用户明确要重做时用，并用 `--shots` 限定。
 
-**`push` 和 `new` 也先 `--dry-run`。** `push` 覆盖远端的提示词（写之前的原文会备份到 `.wrally/raw/history/`）；`new` 在远端建剧集和场次。
+**`push`、`new`、`shots rm`、`shots order` 也先 `--dry-run`。** `push` 覆盖远端的提示词（写之前的原文会备份到 `.wrally/raw/history/`）；`new` 在远端建剧集和场次；`shots rm` 删远端场次（进回收站，可在网页上恢复），删之前把镜号告诉用户、得到同意；`shots order` 改网页上的顺序。
+
+**清单里条目的先后就是成片顺序。** `export` 和进度网页都按它排，不按镜号：后来插进去的镜头（比如编号 12、排在 05 后面）是故意的。`shots order` 让网页跟着清单走；`--by-key` 会把清单按镜号重排，也就改了成片顺序，只在用户明确要按镜号排时用。
 
 **提交超时不要重试。** 生成、建剧集、建场次超时后，服务端可能已经受理，重发会重复扣额度或建出重复的场次。先 `wrally wait <kind>` 或 `wrally status` 看实际状态，任务在跑就用 `wait`、`fetch` 接上。
 
@@ -98,6 +103,10 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `missing_asset_id` | 这一镜还没选关键帧，先 `keyframe pick` |
 | `no_manifest` | 当前目录不是单集目录。项目目录下加 `-C <单集目录>`；全新的目录先 `pull` 或 `new` |
 | `check` 报 `… was made from different …` | 素材是用旧的输入做的（台词或提示词改过而没重做）。重跑对应的 `gen` |
+| `missing_file`、`unsupported_file` | 写成本地路径的参考图或音色找不到，或格式不是常见的图片、视频、音频 |
+| `missing_project`（上传时） | 没指定项目，又找不到唯一一个叫「默认项目」的项目：加 `--project` |
+| `shots_not_deleted`、`order_not_applied` | 删除或重排后回读，远端没变。原始返回的路径在提示里；告诉用户，不要反复重试 |
+| `not_in_manifest`、`missing_on_remote`（`shots order`） | 远端和清单的场次对不上：先 `wrally pull` |
 | `missing_video` | `video upscale` 选中的镜头还没有视频。先 `fetch video`，或用 `--shots` 避开 |
 | `bad_scale`、`unknown_model`（超分） | 倍数或超分模型不在远端给的可选项里，提示里列出了可选值 |
 | `unpushed_prompts` | 本地提示词和远端不一致，`keyframe gen`、`video gen` 不肯提交。先 `wrally push` |
@@ -139,7 +148,7 @@ wrally gen fetch -o out                              # 超时、--no-wait 或下
 ```
 
 - `--model` 填 ID 或名称都行；分辨率、宽高比、时长、张数、参考音色数会按模型目录校验，不合法时退出码 2，什么都不提交。
-- 参考图、首尾帧、参考音色都只收**媒资 ID**；本地文件还不能直接传（要先在网页上传入库）。
+- 参考图、首尾帧、参考音色（`--ref`、`--image`、`--last`、`--voice`）写**媒资 ID 或本地文件**都行。本地文件在提交前上传成媒资（`--dry-run` 不上传，只说会传几个），同一个文件在同一个项目里只传一次，记录里存的是媒资 ID。没给 `--project` 时素材归到名为「默认项目」的项目。
 - **默认提交后等待并下载**，和上面一集的生成命令正好相反（那边默认只提交、要加 `--wait --fetch`）。这里不用加 `--wait`（加了也一样）；`--no-wait` 只提交，之后用 `gen fetch` 接上。`--project <短番项目ID>`（或环境变量 `WRALLY_PROJECT`）让结果归到那个项目的媒资库，不给也能生成。
 - 视频默认不生成音效，要音效加 `--sound`（远端接口默认是开的，wrally 一律显式写）。
 - 提交记录在输出目录的 `.wrally-gen.json`。同样的参数再跑会跳过（要再出一批加 `--again`，文件名带 `-b2`）；提交超时的记录停在 `submitting`，再跑会报 `pending_submit`：先去网页确认是否已受理，确认没有再 `--again`。任务失败时表格显示 `failed: <服务端给的原因>`；「现在使用的人比较多」这类是远端繁忙，过会儿用同样的命令再跑即可（整条记录都失败时不挡重跑，不用 `--again`；`--count` 大于 1 只失败一部分时要加 `--again`）。

@@ -31,8 +31,10 @@ from wrally.commands import page as page_cmd
 from wrally.commands import projects as projects_cmd
 from wrally.commands import pull as pull_cmd
 from wrally.commands import push as push_cmd
+from wrally.commands import shots as shots_cmd
 from wrally.commands import smoke as smoke_cmd
 from wrally.commands import status as status_cmd
+from wrally.commands import upload as upload_cmd
 from wrally.commands import upscale as upscale_cmd
 from wrally.commands import verify as verify_cmd
 from wrally.commands import video as video_cmd
@@ -324,6 +326,46 @@ def push(
     )
     if report.failed:
         raise typer.Exit(1)
+
+
+shots_app = typer.Typer(no_args_is_help=True, help="场次：rm 删除，order 按清单重排网页上的顺序")
+app.add_typer(shots_app, name="shots")
+
+
+@shots_app.command("rm")
+@handle_errors
+@refreshes_page
+def shots_rm(
+    shots: Annotated[str, typer.Argument(help="要删的镜号，如 07 或 07,08、07-09；不接受 all")],
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="只列出会删哪些，不写远端")] = False,
+    directory: DirOpt = Path("."),
+    as_json: JsonOpt = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """删除场次：远端进回收站，清单去掉这几镜，条目和提示词文件挪到 .wrally/removed/。"""
+    ws = Workspace(directory)
+    report = _remote(verbose, lambda c: shots_cmd.rm(ws, c, shots, dry_run=dry_run))
+    _emit(report.summary, shots_cmd.RM_HEADERS, report.rows, as_json, notes=tuple(report.notes))
+
+
+@shots_app.command("order")
+@handle_errors
+@refreshes_page
+def shots_order(
+    by_key: Annotated[
+        bool,
+        typer.Option("--by-key", help="先把清单按镜号排好（00 在前、99 在后）；会改成片顺序，先 --dry-run"),
+    ] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="只列出会挪哪些，不写远端和清单")] = False,
+    directory: DirOpt = Path("."),
+    as_json: JsonOpt = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """让网页上的场次顺序和清单一致。顺序以 episode.yaml 里条目的先后为准（export 也按它）。"""
+    ws = Workspace(directory)
+    report = _remote(verbose, lambda c: shots_cmd.order(ws, c, by_key=by_key, dry_run=dry_run))
+    _emit(report.summary, shots_cmd.ORDER_HEADERS, report.rows, as_json, details="episode.yaml",
+          notes=tuple(report.notes))  # fmt: skip
 
 
 keyframe_app = typer.Typer(no_args_is_help=True, help="关键帧：pick 选定、sheet 候选对比图")
@@ -706,7 +748,8 @@ def gen_image(
     ] = None,
     count: CountOpt = 1,
     ref: Annotated[
-        list[str] | None, typer.Option("--ref", help="参考图的媒资 ID，可多次；提示词里用「第一张图片」引用")
+        list[str] | None,
+        typer.Option("--ref", help="参考图：媒资 ID 或本地图片，可多次；提示词里用「第一张图片」引用"),
     ] = None,
     out: OutOpt = Path("."),
     name: NameOpt = None,
@@ -733,8 +776,8 @@ def gen_video(
     mode: Annotated[
         str, typer.Option("--mode", help="text（文字，可带一张图）或 firstlast（首尾帧）")
     ] = "text",
-    image: Annotated[str | None, typer.Option("--image", help="单图或首帧的媒资 ID")] = None,
-    last: Annotated[str | None, typer.Option("--last", help="尾帧的媒资 ID（firstlast）")] = None,
+    image: Annotated[str | None, typer.Option("--image", help="单图或首帧：媒资 ID 或本地图片")] = None,
+    last: Annotated[str | None, typer.Option("--last", help="尾帧：媒资 ID 或本地图片（firstlast）")] = None,
     duration: Annotated[int | None, typer.Option("--duration", help="时长（秒）")] = None,
     resolution: Annotated[
         int | None, typer.Option("--resolution", help="分辨率枚举：1=480p、3=720p、4=1080p")
@@ -768,7 +811,8 @@ def gen_audio(
     model: ModelOpt = ...,
     prompt_file: PromptFileOpt = None,
     voice: Annotated[
-        list[str] | None, typer.Option("--voice", help="参考音色的媒资 ID，可多次（MiniMax 模型不接受）")
+        list[str] | None,
+        typer.Option("--voice", help="参考音色：媒资 ID 或本地音频，可多次（MiniMax 模型不接受）"),
     ] = None,
     preset: Annotated[
         str | None, typer.Option("--preset", help="预置音色 ID，只用于 MiniMax 模型（如 badao_shaoye）")
@@ -927,6 +971,33 @@ def models(
         print(output.render_json(line, headers, rows))
     else:  # 模型清单本身就是要看的内容，不按 15 行截断
         print(output.render(line, headers, rows, max_rows=max(len(rows), output.MAX_TABLE_ROWS)))
+
+
+@app.command()
+@handle_errors
+def upload(
+    files: Annotated[list[str], typer.Argument(help="本地图片、视频或音频文件")],
+    project: Annotated[
+        str | None,
+        typer.Option("--project", help="归到哪个项目的媒资库；默认取 -C 目录的项目，再取「默认项目」"),
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="只检查文件、列出哪些要上传")] = False,
+    directory: Annotated[
+        Path, typer.Option("-C", "--dir", help="按这个目录（单集或项目目录）定项目，默认当前目录")
+    ] = Path("."),
+    as_json: JsonOpt = False,
+    verbose: VerboseOpt = False,
+) -> None:
+    """把本地文件上传成媒资，打印媒资 ID。同一个文件在同一个项目里只传一次。
+
+    gen 的 --ref/--image/--last/--voice、清单的 ref_assets 和 defaults.audio.voice_asset 也能直接写本地路径，
+    用到时自动上传；这条命令用来先传好、拿到 ID。
+    """
+    line, rows = _remote(
+        verbose,
+        lambda c: upload_cmd.run(c, files, project_id=project, directory=directory, dry_run=dry_run),
+    )
+    _emit(line, upload_cmd.HEADERS, rows, as_json)
 
 
 projects_app = typer.Typer(help="短番项目：不带子命令时列出全部项目；create 新建")

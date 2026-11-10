@@ -4,7 +4,8 @@
 → 回读核对 → 一次提交。旁白提示词由 audio gen 自己写入，不要求事先 push。
 
 幂等和 video gen 同一套：每镜记下输入指纹（台词拼出的提示词 + 模型 + 音色），没变不重复提交。
-音色有两种给法：参考音色（voice_asset + voice_name，逐镜绑定参考音频，旁白模板用 <音色名> 引用），
+音色有两种给法：参考音色（voice_asset + voice_name，逐镜绑定参考音频，旁白模板用 <音色名> 引用；
+voice_asset 可以写本地音频文件，绑定前上传成媒资，指纹按文件内容算），
 或预置音色（voice_preset，MiniMax 这类模型自带的音色 ID，写进 set_model 的 audioFieldValues.voice，
 不绑定参考音频）。预置音色的模型会把提示词原样念出来，所以这时不能配旁白模板，提示词就是台词本身；
 voice_fields 里的其余字段（如 audio_speech_rate）原样并进 audioFieldValues。
@@ -22,6 +23,7 @@ import httpx2
 from wrally.api import shots as shots_api
 from wrally.api.audio import bind_voice, submit_audio
 from wrally.api.results import get_results
+from wrally.commands import upload as upload_cmd
 from wrally.commands.common import for_each, is_skipped, load_manifest, remember_web_copies, section, select
 from wrally.commands.video import GenReport
 from wrally.errors import PreflightError, WrallyError
@@ -38,12 +40,13 @@ def fingerprint(prompt: str, model: str, voice: str) -> str:
     return hashlib.sha1(payload.encode()).hexdigest()[:12]
 
 
-def voice_key(audio_defaults: dict) -> str:
-    """音色的身份，进输入指纹：参考音色是媒资 ID，预置音色是 preset:<ID> 加上额外字段。"""
+def voice_key(ws: Workspace, audio_defaults: dict) -> str:
+    """音色的身份，进输入指纹：参考音色是媒资 ID（本地文件按内容），预置音色是 preset:<ID> 加上额外字段。"""
     preset = audio_defaults.get("voice_preset")
     fields = audio_defaults.get("voice_fields") or {}
     if not preset:
-        asset = str(audio_defaults.get("voice_asset") or "")
+        asset = audio_defaults.get("voice_asset")
+        asset = upload_cmd.print_of(ws, asset) if asset else ""
         # 不写 voice_fields 时保持原样，旧清单的指纹不变
         return asset + ("|" + json.dumps(fields, ensure_ascii=False, sort_keys=True) if fields else "")
     return "preset:" + json.dumps({"voice": preset, **fields}, ensure_ascii=False, sort_keys=True)
@@ -103,7 +106,7 @@ async def gen(
         )
     # 预置音色写进 voice；voice_fields（如 audio_speech_rate）参考音色也能用
     field_values = ({"voice": preset} if preset else {}) | (defaults.get("voice_fields") or {}) or None
-    voice_id = voice_key(defaults)
+    voice_id = voice_key(ws, defaults)
     series_id, project_id = data["series_id"], data["project_id"]
     report = GenReport(noun="audio")
     for e in [e for e in selected if is_skipped(e, "audio")]:
@@ -181,6 +184,10 @@ async def gen(
     for m in dict.fromkeys(models[str(e["key"])] for e in todo):
         name = "audio-models.json" if m == model else f"audio-models-{m}.json"
         capabilities[m] = await shots_api.model_capabilities(client, "audio", m, ws.raw_dir / name)
+
+    if not preset and ws.media_file(voice):
+        # 音色写的是本地文件：先上传，之后按媒资 ID 绑定和核对
+        voice = (await upload_cmd.resolve(client, [voice], ws.root, project_id, http=http)).ids[voice]
 
     # —— 逐镜绑定音色：已经绑着同一个音色的不动；预置音色不绑定 ——
     unbound = [] if preset else [e for e in todo if remote[e["story_id"]].voice_asset_ids != [voice]]

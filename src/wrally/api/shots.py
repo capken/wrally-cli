@@ -1,6 +1,6 @@
 """场次接口。
 
-只暴露 list：shotlist_manage 的 get 返回空提示词，容易让人误以为没写入，所以不包装它。
+查询只暴露 list：shotlist_manage 的 get 返回空提示词，容易让人误以为没写入，所以不包装它。
 """
 
 from pathlib import Path
@@ -50,6 +50,31 @@ async def add_shots(
         {"action": "add", "series_id": series_id, "project_id": project_id, "shots": shots},
         raw_path=raw_path,
         retry=False,
+    )
+
+
+async def delete_shots(
+    client: McpClient, series_id: str, project_id: str, story_ids: list[str], raw_path: Path | None = None
+) -> None:
+    """软删除场次（进回收站）。不自动重试：重跑时先 list，已经不在的不再删。"""
+    if not story_ids:
+        raise ValueError("delete_shots 需要明确的 story_ids")
+    await client.call(
+        "shotlist_manage",
+        {"action": "delete", "series_id": series_id, "project_id": project_id, "story_ids": story_ids},
+        raw_path=raw_path,
+        retry=False,
+    )
+
+
+async def sort_shots(
+    client: McpClient, series_id: str, project_id: str, ordered: list[str], raw_path: Path | None = None
+) -> None:
+    """按给定顺序重排剧集下的场次。ordered 要列全剧集的场次；重复执行结果一样，可以重试。"""
+    await client.call(
+        "shotlist_manage",
+        {"action": "sort", "series_id": series_id, "project_id": project_id, "ordered_story_ids": ordered},
+        raw_path=raw_path,
     )
 
 

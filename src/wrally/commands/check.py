@@ -63,7 +63,7 @@ def stale(ws: Workspace, data: dict, entry: dict) -> list[str]:
             text = composed(ws, styles, entry, "audio") or ""
             if (
                 audio_cmd.fingerprint(
-                    text, audio_cmd.shot_model(voice.get("model"), entry), audio_cmd.voice_key(voice)
+                    text, audio_cmd.shot_model(voice.get("model"), entry), audio_cmd.voice_key(ws, voice)
                 )
                 != audio["made_from"]
             ):

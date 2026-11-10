@@ -142,6 +142,10 @@ class FakeWorkRally:
         self.projects: list[dict] = []  # project_list 的条目：project_id、project_name、trash
         self.series_by_project: dict[str, int] = {}  # 项目 ID → 剧集数（series_list 用）
         self.project_outcome = "ok"  # ok / timeout（响应丢了）/ lost（请求没到）/ no_id（没返回 ID）
+        self.uploads: dict[str, bytes] = {}  # COS 上的对象：key → 内容
+        self.put_headers: list[dict] = []
+        self.created: list[dict] = []  # asset_create 的参数
+        self.sort_ignored = False  # 模拟 sort 没生效
 
     def add_result(self, story_id: str, kind: str, asset_id: str, created: str, content: bytes = b"x",
                    title: str | None = None) -> None:  # fmt: skip
@@ -249,6 +253,23 @@ class FakeWorkRally:
             results = sorted(entry.get("results", []), key=lambda r: r["created_at"], reverse=True)
             return {"doing_count": entry.get("doing", 0), "failed_count": entry.get("failed", 0),
                     "done_count": len(results), "results": results, "has_more": False}  # fmt: skip
+        if tool == "get_upload_token":
+            exts = arguments.get("file_exts") or [arguments["file_ext"]]
+            n = len(self.uploads) + len(self.put_headers)
+            files = [{"tmp_secret_id": "AKIDtest", "tmp_secret_key": "secret", "tmp_token": "tok",
+                      "bucket": "b-1", "region": "ap-beijing", "key": f"up/{n + i}.{e}",
+                      "file_url": f"https://cdn.example.com/up/{n + i}.{e}", "upload_type": 200}
+                     for i, e in enumerate(exts)]  # fmt: skip
+            return {"files": files} if "file_exts" in arguments else files[0]
+        if tool == "asset_create":
+            assert retry is False, "入库不允许自动重试"
+            key = arguments["asset_url"].split("cdn.example.com/", 1)[1]
+            assert key in self.uploads, "入库前文件要先传到 COS"
+            asset_id = f"up{len(self.created) + 1}"
+            self.created.append(arguments)
+            self.add_asset(asset_id, arguments["asset_type"], self.uploads[key], arguments["name"])
+            return {"assets": [{"id": asset_id, "type": arguments["asset_type"],
+                                "asset_details": {"url": SIGNED}}]}  # fmt: skip
         if tool == "asset_detail":
             return {"assets": [
                 {"id": i, **self.assets[i], "asset_details": {"download_url": f"https://dl.example.com/{i}?sign=abc"}}
@@ -277,6 +298,15 @@ class FakeWorkRally:
                 })  # fmt: skip
             if self.add_outcome == "timeout":
                 raise NetworkError(hint="shotlist_manage TimeoutError")
+            return {"message": "ok"}
+        if action == "delete":
+            assert retry is False, "删除场次不允许自动重试"
+            self.stories[:] = [st for st in self.stories if st["story_id"] not in arguments["story_ids"]]
+            return {"message": "ok"}
+        if action == "sort":
+            if not self.sort_ignored:
+                for n, story_id in enumerate(arguments["ordered_story_ids"], 1):
+                    by_id[story_id]["sort_num"] = n
             return {"message": "ok"}
         if action == "edit_content":
             assert arguments.get("series_id"), "edit_content 必须带 series_id"
@@ -370,6 +400,12 @@ class FakeWorkRally:
         import httpx2
 
         def handler(request):
+            if request.method == "PUT":  # COS 直传
+                assert request.url.host == "b-1.cos.ap-beijing.myqcloud.com"
+                assert "content-type" not in request.headers, "直传不能带 Content-Type"
+                self.put_headers.append(dict(request.headers))
+                self.uploads[request.url.path.lstrip("/")] = request.content
+                return httpx2.Response(200)
             asset_id = request.url.path.lstrip("/")
             self.http_hits.append(asset_id)
             if asset_id in self.expired:
@@ -378,6 +414,12 @@ class FakeWorkRally:
             return httpx2.Response(200, content=self.files[asset_id])
 
         return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+
+
+@pytest.fixture(autouse=True)
+def _config_dir(tmp_path, monkeypatch):
+    """凭证目录（上传记录 uploads.json 也在这里）放进临时目录，不碰本机的 ~/.config/wrally。"""
+    monkeypatch.setenv("WRALLY_CONFIG_DIR", str(tmp_path / "cfg"))
 
 
 @pytest.fixture

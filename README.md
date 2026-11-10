@@ -173,6 +173,9 @@ WorkBuddy 桌面端在本机执行命令，skill 格式与 Claude Code 相同（
 | 「生成这集的关键帧」 | `wrally keyframe gen --dry-run`，确认后加 `--wait --fetch` 执行，再提供对比图供用户选图 |
 | 「第 5 镜重做视频」 | `wrally video gen --shots 05 --redo --dry-run` |
 | 「检查一下素材」 | `wrally check`，只报告有警告的镜头 |
+| 「删掉第 7 镜」 | `wrally shots rm 07 --dry-run`，确认后正式删除（远端进回收站） |
+| 「网页上的顺序和清单不一样」 | `wrally shots order --dry-run`，确认后执行 |
+| 「把这张图传上去当参考图」 | `wrally upload art/公主.png`，或直接在清单的 `ref_assets` 里写本地路径 |
 | 「用 WorkRally 生成一段配音」 | `wrally gen audio … --dry-run` |
 | 「测一下生成接口能不能用」 | `wrally smoke --dry-run`，确认后运行 `wrally smoke`，依次生成图像、配音和 5 秒视频并检查文件 |
 
@@ -181,6 +184,7 @@ WorkBuddy 桌面端在本机执行命令，skill 格式与 Claude Code 相同（
 - 生成类命令（`keyframe gen`、`video gen`、`audio gen`、`gen`、`smoke`）消耗真实额度。
 - `push` 覆盖远端的提示词。
 - `new` 在远端创建剧集和场次。
+- `shots rm` 删除远端场次（进回收站），`shots order` 改网页上的场次顺序。
 
 使用说明要求 Agent 对这些操作先运行 `--dry-run`，向用户说明将要执行的操作，经确认后再执行。选图始终由用户决定。
 

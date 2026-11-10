@@ -3,7 +3,7 @@
 普通镜头：set_model image → shotlist_generate_image（全部镜头一次提交）。
 带 refs 的镜头：用被引用镜头的定稿关键帧作参考图，走画布图生图，逐镜提交。
 refs 里的一项可以是镜号（取那一镜的定稿关键帧），也可以是 ref_assets 小节里登记的名字（取对应的媒资，
-比如角色设定图）。镜号优先。
+比如角色设定图）。镜号优先。ref_assets 的值可以是本地文件：提交前上传成媒资，指纹按文件内容算。
 
 前置检查与幂等的做法和 video gen 相同：提示词要已 push；输入指纹没变不重复提交；
 提交前落盘 submitting，被打断后重跑时先问远端。
@@ -18,6 +18,7 @@ import httpx2
 from wrally.api import shots as shots_api
 from wrally.api.image import canvas_generate, submit_images
 from wrally.api.results import get_results
+from wrally.commands import upload as upload_cmd
 from wrally.commands.common import (
     flow_seq,
     for_each,
@@ -89,7 +90,9 @@ async def gen(
             missing = [r for r, a in zip(wanted, assets, strict=True) if not a]
             raise PreflightError("missing_ref_pick", f"({e['key']} needs picks of {','.join(missing)})")
         refs[str(e["key"])] = assets
-    prints = {k: fingerprint(prompts[k], config, refs[k]) for k in prompts}
+    prints = {
+        k: fingerprint(prompts[k], config, [upload_cmd.print_of(ws, a) for a in refs[k]]) for k in prompts
+    }
 
     todo, recover = [], []
     for e in entries:
@@ -165,6 +168,11 @@ async def gen(
     stale_web = [e for e in plain if remote[e["story_id"]].rich_image_differs(prompts[str(e["key"])])]
     if stale_web:
         raise PreflightError("stale_web_prompt", f"({_keys(stale_web)}; paste the image prompt on the web)")
+    # ref_assets 里写成本地文件的先上传：失败了什么都还没提交
+    values = [a for e in canvas for a in refs[str(e["key"])]]
+    resolved = await upload_cmd.resolve(client, values, ws.root, project_id, http=http)
+    for e in canvas:
+        refs[str(e["key"])] = [str(resolved.ids[a]) for a in refs[str(e["key"])]]
 
     # —— 普通镜头：写配置 → 回读核对 ——
     if plain:

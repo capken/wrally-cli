@@ -5,6 +5,8 @@
   同样的参数再跑会被拦下（pending_submit），避免重复扣额度。
 - 同样的参数已经提交过就跳过；要再出一批用 --again。
 - 等待和下载可以中断，`wrally gen fetch -o <目录>` 接着做。
+- 参考图、首尾帧、参考音色可以写本地路径：提交前先上传成媒资（同一个文件只传一次），
+  记录和指纹里存的是媒资 ID。
 """
 
 import hashlib
@@ -21,6 +23,7 @@ import httpx2
 from wrally.api import canvas
 from wrally.api.assets import download_assets
 from wrally.api.image import canvas_task
+from wrally.commands import upload as upload_cmd
 from wrally.errors import NetworkError, PreflightError, WrallyError
 from wrally.transport.client import McpClient
 
@@ -74,6 +77,36 @@ def _files_for(job: dict) -> list[str]:
     base = _base(job) + (f"-b{job['batch']}" if job.get("batch", 1) > 1 else "")
     n = len(job["tasks"])
     return [base if n == 1 else f"{base}-{i + 1}" for i in range(n)]
+
+
+# ---------- 本地文件 ----------
+
+MEDIA_LISTS = ("refs", "voices")  # 值是媒资 ID 列表的参数
+MEDIA_ONES = ("image", "last")  # 值是一个媒资 ID 的参数
+
+
+def _media_values(params: dict) -> list[str]:
+    values = [str(v) for k in MEDIA_LISTS for v in params.get(k) or []]
+    return values + [str(params[k]) for k in MEDIA_ONES if params.get(k)]
+
+
+def _swap(params: dict, ids: dict[str, str | None]) -> dict:
+    """本地路径换成媒资 ID；dry run 里没传过的文件换成 upload:<路径> 占位，不会和真实的 ID 撞上。"""
+
+    def one(value: object) -> object:
+        if value is None or str(value) not in ids:
+            return value
+        got = ids[str(value)]
+        return got if got else f"upload:{str(value)}"
+
+    out = dict(params)
+    for k in MEDIA_LISTS:
+        if params.get(k):
+            out[k] = [one(v) for v in params[k]]
+    for k in MEDIA_ONES:
+        if params.get(k):
+            out[k] = one(params[k])
+    return out
 
 
 # ---------- 校验 ----------
@@ -135,10 +168,15 @@ async def gen(
     model = canvas.pick_model(await canvas.models(client, kind), params["model"], kind)
     params = params | {"model": model.id}
     validate(kind, model, params)
+    report = Report()
+    resolved = await upload_cmd.resolve(
+        client, _media_values(params), Path("."), project_id, dry_run=dry_run, http=http
+    )
+    params = _swap(params, resolved.ids)
+    tail = f"; {resolved.note()}" if resolved.note() else ""
     fp = fingerprint(kind, params, project_id)
     jobs = load_log(out)
     same = [j for j in jobs if j["fp"] == fp]
-    report = Report()
     if same and not again:
         last = same[-1]
         if last["state"] == "submitting":
@@ -149,12 +187,13 @@ async def gen(
         if last["state"] != "failed":
             report.summary = (
                 f"{kind}: same inputs already submitted as job {last['id']}, skipped (--again for more)"
+                + tail
             )
             report.job_ids = [last["id"]]
             return report
     if dry_run:
         report.summary = (
-            f"dry run: would submit 1 {kind} job, {params.get('count', 1)} result(s) with {model.name}"
+            f"dry run: would submit 1 {kind} job, {params.get('count', 1)} result(s) with {model.name}" + tail
         )
         return report
     # 先换好参考图地址再落盘 submitting：这一步失败时什么都没提交，不该留下「可能已受理」的记录
@@ -185,7 +224,7 @@ async def gen(
     job["state"] = "submitted"
     job["tasks"] = [{"task_id": t, "state": "running"} for t in task_ids]
     save_log(out, jobs)
-    report.summary = f"submitted {kind} job {job['id']}: {len(task_ids)} task(s) with {model.name}"
+    report.summary = f"submitted {kind} job {job['id']}: {len(task_ids)} task(s) with {model.name}{tail}"
     report.job_ids = [job["id"]]
     return report
 
