@@ -45,6 +45,21 @@ def test_shot_without_single_assets_has_no_keyframe(stories):
     assert Shot.from_story(stories[1]).keyframe_asset_id is None
 
 
+def test_first_last_frames_configured_on_the_web_give_the_keyframe(stories):
+    """网页上配的首尾帧（2026-11-13 的真实样本）：firstLastAssets 是 {firstFrame, lastFrame}。
+
+    没有 singleAssets 时取首帧。
+    """
+    import json
+
+    story = dict(stories[1])
+    frame = lambda i: {"id": i, "url": f"https://dl.example.com/{i}", "name": i, "source": "upload"}  # noqa: E731
+    pair = {"firstFrame": frame("f1"), "lastFrame": frame("l1")}
+    video = {"mode": "FirstLastFrame", "firstLastAssets": pair}
+    story["extra"] = json.dumps({"gen_config": json.dumps({"video": video})})
+    assert Shot.from_story(story).keyframe_asset_id == "f1"
+
+
 class FakeClient:
     def __init__(self, pages):
         self.pages = pages

@@ -2,7 +2,8 @@
 
 单图模式在配置里叫 mode=Text，必须和 textModel、singleAssets 一起完整写入；
 singleAssets 必须带 asset_id，否则视频不参考关键帧。
-首尾帧模式叫 mode=FirstLastFrame，模型写 firstLastModel，两张图按 [首帧, 尾帧] 写进 firstLastAssets。
+首尾帧模式叫 mode=FirstLastFrame，模型写 firstLastModel，两张图写进 firstLastAssets 的 firstFrame、lastFrame
+（每张 {id, url, name, source}，照网页配出来的样本；写成列表时服务端报「缺少 firstFrame/lastFrame 资产」）。
 singleAssets 照样写首帧：网页「选用」的关键帧从它读，选图冲突的检查靠它。
 """
 
@@ -31,6 +32,11 @@ def _asset_item(asset_id: str, name: str, url: str) -> dict:
     return {"asset_id": asset_id, "assetId": asset_id, "fileType": "image", "name": name, "url": url}
 
 
+def _frame_item(asset_id: str, name: str, url: str) -> dict:
+    """首尾帧里的一张图。写法照网页配出来的样本（2026-11-13 在真实场次上取得），和 singleAssets 的不一样。"""
+    return {"id": asset_id, "url": url, "name": name, "source": "upload"}
+
+
 def single_image_config(settings: VideoSettings, asset_id: str, name: str, url: str) -> dict:
     return {
         "mode": "Text",
@@ -53,7 +59,7 @@ def first_last_config(settings: VideoSettings, first: Frame, last: Frame) -> dic
     config = single_image_config(settings, *first)
     config["mode"] = "FirstLastFrame"
     config["firstLastModel"] = settings.model
-    config["firstLastAssets"] = [_asset_item(*first), _asset_item(*last)]
+    config["firstLastAssets"] = {"firstFrame": _frame_item(*first), "lastFrame": _frame_item(*last)}
     return config
 
 

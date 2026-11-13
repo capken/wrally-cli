@@ -92,8 +92,11 @@ class Shot(BaseModel):
         gen_config = strip_urls(_loads(extra.get("gen_config")) or {})
         video = gen_config.get("video") or {}
         # 首尾帧模式下 wrally 也写 singleAssets；网页上配的首尾帧可能只有 firstLastAssets，取它的首帧
-        singles = video.get("singleAssets") or video.get("firstLastAssets") or []
+        singles = video.get("singleAssets") or []
         keyframe = next((a.get("asset_id") or a.get("assetId") for a in singles if isinstance(a, dict)), None)
+        pair = video.get("firstLastAssets")
+        if not keyframe and isinstance(pair, dict) and isinstance(pair.get("firstFrame"), dict):
+            keyframe = pair["firstFrame"].get("id")
         voices = _loads(extra.get("audio_role_data_json")) or []
         selected = story.get("story_audit_asset_detail") or {}
         return cls(

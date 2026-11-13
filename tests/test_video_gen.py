@@ -84,7 +84,9 @@ async def test_shot_with_last_frame_uses_first_last_mode_and_its_own_model(ready
                          "url": f"https://dl.example.com/{a}"}  # fmt: skip
     config = video_config(remote)
     assert (config["mode"], config["firstLastModel"], config["model"]) == ("FirstLastFrame", "fl1", "fl1")
-    assert config["firstLastAssets"] == [item("key02", "02.png"), item("end02", "02-end.png")]
+    frame = lambda a, n: {"id": a, "url": f"https://dl.example.com/{a}", "name": n, "source": "upload"}  # noqa: E731
+    pair = {"firstFrame": frame("key02", "02.png"), "lastFrame": frame("end02", "02-end.png")}
+    assert config["firstLastAssets"] == pair
     assert config["singleAssets"] == [item("key02", "02.png")]  # 网页「选用」的关键帧仍从这里读
 
 
