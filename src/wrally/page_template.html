@@ -76,6 +76,7 @@ h1 {
 .dot.stale, .dot.pending, .dot.running, .dot.missing { background: var(--orange); }
 .dot.failed { background: var(--red); }
 .dot.film { background: var(--accent); }
+.dot.cut { background: var(--faint); }
 .keys { font-size: 12px; color: var(--faint); }
 kbd {
   font: 11px ui-monospace, "SF Mono", monospace; background: var(--fill); border-radius: 4px; padding: 1px 5px;
@@ -85,6 +86,9 @@ kbd {
 main { padding: 28px 22px 96px 14px; min-width: 0; }
 .warn { margin: 0 0 16px; font-size: 14px; color: var(--orange); }
 .shot { background: var(--card); border-radius: 22px; padding: 28px; margin-bottom: 20px; box-shadow: var(--shadow); }
+.shot.cut > :not(header):not(.final) { opacity: .45; }
+.final { margin: 12px 0 0; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; background: var(--fill); color: var(--muted); }
+.final b { color: var(--text); font-weight: 600; }
 .shot > header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
 .shot h2 {
   margin: 0; font: 600 40px/1.1 -apple-system, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -.02em;
@@ -245,8 +249,9 @@ summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var
 
   const stateOf = (shot, kind) => shot[kind].status.state;
   const webDiffers = shot => Object.values(shot.prompts).some(p => p && p.web === "differs");
-  const isOpen = shot => webDiffers(shot) || KINDS.some(([kind]) => !SETTLED.includes(stateOf(shot, kind)));
+  const isOpen = shot => !shot.cut && webDiffers(shot) || KINDS.some(([kind]) => !SETTLED.includes(stateOf(shot, kind)));
   function worst(shot) {
+    if (shot.cut) return "cut";
     const states = KINDS.map(([kind]) => stateOf(shot, kind));
     for (const s of ["failed", "stale", "missing", "running", "pending", "none"]) if (states.includes(s)) return s;
     return webDiffers(shot) ? "stale" : "done";
@@ -258,7 +263,7 @@ summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var
   document.getElementById("head").append(
     el("div", { class: "eyebrow", text: data.name }), el("h1", { text: data.title || data.name }), fresh);
   document.getElementById("stats").append(...KINDS.map(([kind, label]) => {
-    const wanted = data.shots.filter(s => stateOf(s, kind) !== "skipped");
+    const wanted = data.shots.filter(s => !s.cut && stateOf(s, kind) !== "skipped");
     const done = wanted.filter(s => stateOf(s, kind) === "done").length;
     return el("div", { class: "stat" },
       el("span", { class: "what", text: label }),
@@ -357,13 +362,22 @@ summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var
         img.removeAttribute("data-src");
       }
     });
-    return el("section", { class: "shot", id: "s" + shot.key, "data-open": isOpen(shot) ? "1" : "0" },
+    // 成片和清单对不上的地方：这一镜删了，或者成片用的是另做的视频
+    const final = shot.cut
+      ? el("p", { class: "final" }, el("b", { text: "不进成片" }), "：素材留着，合成时跳过这一镜。")
+      : shot.replaced
+        ? el("p", { class: "final" }, el("b", { text: "成片用另做的视频" }), `：${shot.replaced}。`
+          + "关键帧、候选和提示词是清单里的，不一定是这条视频用的。")
+        : null;
+    return el("section", { class: "shot" + (shot.cut ? " cut" : ""), id: "s" + shot.key,
+      "data-open": isOpen(shot) ? "1" : "0" },
       el("header", null,
         el("h2", { text: shot.key }),
         el("div", { class: "pills" }, webPill(shot), KINDS.map(([kind, label]) => {
           const st = shot[kind].status;
           return el("span", { class: "pill " + st.state, title: st.note || null, text: `${label} · ${st.label}` });
         }))),
+      final,
       el("p", { class: "line" + (shot.narration ? "" : " none"), text: shot.narration || "这一镜还没有台词" }),
       el("div", { class: "media" },
         el("figure", null,
@@ -375,10 +389,12 @@ summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var
         el("figure", null,
           el("div", { class: "frame" }, shot.video.src
             // 没有关键帧当封面时取视频首帧，否则是一块黑
-            ? el("video", { src: shot.video.src, poster: kf.src, controls: true, playsinline: true,
-              preload: kf.src ? "none" : "metadata" })
+            // 另做的视频不拿清单里的关键帧当封面，免得看起来像旧画面
+            ? el("video", { src: shot.video.src, poster: shot.replaced ? null : kf.src, controls: true,
+              playsinline: true, preload: kf.src && !shot.replaced ? "none" : "metadata" })
             : shot.video.status.label),
-          el("figcaption", null, el("b", { text: "视频" }), shot.video.status.note || shot.video.status.label))),
+          el("figcaption", null, el("b", { text: shot.replaced ? "视频（成片用）" : "视频" }),
+            shot.video.status.note || shot.video.status.label))),
       el("div", { class: "voice" },
         el("span", { class: "tag", text: "旁白" }),
         shot.audio.src ? el("audio", { src: shot.audio.src, controls: true, preload: "none" })

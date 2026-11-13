@@ -21,7 +21,7 @@ from urllib.parse import quote
 from wrally.commands.common import is_skipped, letter, load_manifest, web_copies
 from wrally.errors import WrallyError
 from wrally.prompts import KINDS, Styles, composed, is_styled, load_styles, local_text
-from wrally.workspace import Workspace, write_if_changed
+from wrally.workspace import Workspace, overlay, write_if_changed
 
 PAGE = "page.html"
 VERSION = "page.version.js"  # 在 .wrally/ 下
@@ -165,6 +165,36 @@ def _prompt(
     return out | {"own": full}
 
 
+def _dig(ws: Workspace, data: dict[str, Any], dotted: object) -> Any:
+    """按点号路径（如 `assemble.video`）取值。和共用小节一样：项目文件打底，单集清单覆盖。"""
+    if not isinstance(dotted, str) or not dotted.strip():
+        return None
+    first, *rest = dotted.strip().split(".")
+    node: Any = overlay(ws.project().get(first), data.get(first))
+    for part in rest:
+        node = node.get(part) if isinstance(node, dict) else None
+    return node
+
+
+def _final(ws: Workspace, data: dict[str, Any]) -> tuple[dict[str, Path], set[str]]:
+    """成片实际用的视频和删掉的镜头。它们由片子自己的合成脚本记在清单里，wrally 不认识那份记录的格式。
+
+    项目文件或清单的 `page` 小节写点号路径指过去：`video` 指向「镜号 → 视频文件」的映射（成片用这个文件
+    代替 wrally 生成的视频），`cut` 指向不进成片的镜号列表。视频路径先按单集目录找，再按项目目录找。
+    返回（镜号 → 视频的绝对路径，文件不在也返回）和不进成片的镜号。
+    """
+    conf = ws.settings(data, "page")  # `page: false`（不自动重建）不是映射，读出来是空的
+    videos, cut = _dig(ws, data, conf.get("video")), _dig(ws, data, conf.get("cut"))
+    project = ws.project_path()
+    bases = [ws.root] + ([project.parent] if project else [])
+    found: dict[str, Path] = {}
+    for key, value in videos.items() if isinstance(videos, dict) else ():
+        if isinstance(value, str) and value.strip():
+            paths = [base / Path(value).expanduser() for base in bases]
+            found[str(key)] = next((p for p in paths if p.is_file()), paths[-1])
+    return found, {str(k) for k in cut} if isinstance(cut, list) else set()
+
+
 def collect(ws: Workspace) -> dict[str, Any]:
     """清单和本地文件 → 页面要展示的数据。"""
     # 放在函数里导入：check 会带进生成命令的模块
@@ -177,6 +207,7 @@ def collect(ws: Workspace) -> dict[str, Any]:
     except WrallyError as e:
         styles, note = Styles(), f"{e.code} {e.hint}".strip()
     copies = web_copies(ws) or {}
+    final, cut = _final(ws, data)
     shots = []
     for entry in data["shots"]:
         web = copies.get(str(entry.get("story_id"))) or {}
@@ -186,11 +217,21 @@ def collect(ws: Workspace) -> dict[str, Any]:
             stale = []  # 公共文本读不出来，上面已经记了
         audio = _media(ws, entry, "audio", stale)
         f0 = (entry.get("audio") or {}).get("f0")
+        key = str(entry["key"])
+        video = _media(ws, entry, "video", stale)
+        replaced = None
+        if key in final:  # 成片用的是另做的视频：页面放它，清单里那条只当历史
+            path = final[key]
+            replaced = os.path.relpath(path.resolve(), ws.root.resolve())
+            src = _src(ws, path)
+            video = {"status": _state("done", "") if src else _state("missing", replaced), "src": src}
         shots.append({
-            "key": str(entry["key"]),
+            "key": key,
+            "cut": key in cut,
+            "replaced": replaced,
             "narration": str(entry.get("narration") or ""),
             "keyframe": _keyframe(ws, entry),
-            "video": _media(ws, entry, "video", stale),
+            "video": video,
             "audio": audio | {"f0": f0 if isinstance(f0, (int, float)) else None},
             "prompts": {kind: _prompt(ws, styles, entry, kind, web.get(kind)) for kind in KINDS},
         })  # fmt: skip
@@ -218,7 +259,7 @@ def _web_differs(shot: dict) -> bool:
 
 def summarize(data: dict[str, Any]) -> dict[str, Any]:
     """一集的页面数据 → 总览页上那张卡片要用的数。"""
-    shots = data["shots"]
+    shots = [s for s in data["shots"] if not s.get("cut")]  # 不进成片的镜头不算进度
     stats = {}
     for kind in MEDIA:
         states = [s[kind]["status"]["state"] for s in shots]
@@ -317,6 +358,11 @@ def signature(ws: Workspace) -> tuple:
     """页面依赖的所有文件的修改时间；--watch 靠它判断要不要重建。"""
     project = ws.project_path()
     files = [ws.manifest_path, *([project] if project else []), *sorted(ws.root.glob("*.mp4"))]
+    try:
+        data = load_manifest(ws)
+        files += sorted(_final(ws, data)[0].values())
+    except Exception:  # noqa: BLE001, S110
+        pass  # 清单正改到一半，下一轮再算
     folders = [ws.root / name for name in WATCHED] + ([project.parent / "styles"] if project else [])
     for folder in folders:
         files += sorted(p for p in folder.rglob("*") if p.is_file())

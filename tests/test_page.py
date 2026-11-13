@@ -334,3 +334,49 @@ def test_suggested_keyframe_is_marked(ws):
 
     edit(ws, "01", lambda e: e.update(suggest="A"))  # 写错形状不报错
     assert shot(ws, "01")["keyframe"]["suggest"] == ""
+
+
+def test_final_video_and_cut_shots_come_from_the_assembly_record(ws, tmp_path_factory):
+    """成片另做的视频、删掉的镜头记在合成脚本自己的小节里；page 小节用点号路径指过去。"""
+    root, (ep1,) = project_with(ws, tmp_path_factory, names=("ep1",))
+    (root / "wrally.yaml").write_text(
+        "title: 示例片\npage: {video: assemble.video, cut: assemble.cut}\n", encoding="utf-8"
+    )
+    put(ep1, ".wrally/video/01.mp4")
+    put(ep1, "../assets/新-01.mp4")  # 相对项目目录
+    put(ep1, "local-02.mp4")  # 相对单集目录
+    data = ep1.load()
+    data["assemble"] = {
+        "video": {"01": "assets/新-01.mp4", "02": "local-02.mp4", "99": "assets/没有.mp4"},
+        "cut": ["00"],
+    }
+    ep1.save(data)
+
+    one = shot(ep1, "01")
+    assert one["replaced"] == "../assets/新-01.mp4" and not one["cut"]
+    assert one["video"]["src"].startswith("../assets/%E6%96%B0-01.mp4?v=")
+    assert one["video"]["status"]["state"] == "done"
+    assert shot(ep1, "02")["replaced"] == "local-02.mp4"
+    gone = shot(ep1, "99")
+    assert gone["video"]["status"]["state"] == "missing" and gone["video"]["src"] is None
+    assert shot(ep1, "00")["cut"] and shot(ep1, "00")["replaced"] is None
+
+    page.build(ep1)
+    summary = index_data(root)["episodes"][0]
+    assert summary["shots"] == 3  # 删掉的 00 不算进度
+
+    # 换过的视频文件变了，--watch 也要发现
+    assert any("新-01.mp4" in p for p, _ in page.signature(ep1))
+
+
+def test_without_page_section_the_manifest_video_is_shown(ws, tmp_path_factory):
+    root, (ep1,) = project_with(ws, tmp_path_factory, names=("ep1",))
+    data = ep1.load()
+    data["assemble"] = {"video": {"01": "x.mp4"}, "cut": ["00"]}
+    ep1.save(data)
+    put(ep1, "x.mp4")
+    assert shot(ep1, "01")["replaced"] is None and not shot(ep1, "00")["cut"]
+    # 单集写 page: false 只是不自动重建，不影响读法
+    data["page"] = False
+    ep1.save(data)
+    assert shot(ep1, "01")["replaced"] is None
