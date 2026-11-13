@@ -67,13 +67,20 @@ def _placeholders(ws: Workspace, keys: list[str]) -> int:
 
 
 def expand_keys(spec: str) -> list[str]:
-    """要建的镜号：00-11,99 → 00、01 … 11、99。只接受数字；00 是片头，99 是片尾。"""
+    """要建的镜号：00-11,99 → 00、01 … 11、99；00 是片头，99 是片尾。
+
+    一镜拆成几镜时用子镜号：数字后面跟一个小写字母，如 13a、13b（单独列出，不能写成范围）。
+    """
     keys: list[str] = []
     for part in spec.split(","):
+        sub = part.strip()
+        if len(sub) > 1 and sub[:-1].isdigit() and sub[-1] in "abcdefghijklmnopqrstuvwxyz":
+            keys.append(sub[:-1].zfill(2) + sub[-1])
+            continue
         lo, dash, hi = (x.strip() for x in part.partition("-"))
         hi = hi if dash else lo
         if not (lo.isdigit() and hi.isdigit()) or int(hi) < int(lo):
-            raise PreflightError("bad_shots", f"({part.strip() or spec}; e.g. 00-11,99)")
+            raise PreflightError("bad_shots", f"({part.strip() or spec}; e.g. 00-11,99 or 13a)")
         keys.extend(str(n).zfill(2) for n in range(int(lo), int(hi) + 1))
     if len(set(keys)) != len(keys):
         raise PreflightError("bad_shots", f"({spec}; duplicate shot)")

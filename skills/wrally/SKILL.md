@@ -56,7 +56,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 
 每一步是一次 bash 调用。
 
-1. **建档**。新的一集：`wrally new --shots 00-11,99 --name "EP5 …" --dry-run`，确认后去掉 `--dry-run`。可以先手写清单条目（不写 `story_id`）和 `prompts/` 再跑 `new`：条目按镜号认领，本地提示词保留，建完直接走第 2 步的 `lint` → `push`。远端已有场次的：`wrally pull --project <ID> --series <ID>`（有项目文件时不用给 `--project`）。
+1. **建档**。新的一集：`wrally new --shots 00-11,99 --name "EP5 …" --dry-run`，确认后去掉 `--dry-run`。可以先手写清单条目（不写 `story_id`）和 `prompts/` 再跑 `new`：条目按镜号认领，本地提示词保留，建完直接走第 2 步的 `lint` → `push`。远端已有场次的：`wrally pull --project <ID> --series <ID>`（有项目文件时不用给 `--project`）。给已有的一集加镜头也用 `new`（只补缺的场次）；一镜拆成几镜时用子镜号 `--shots 13a,13b`（数字加一个小写字母，单独列出），建好后在清单里把子镜挪到原镜后面，清单顺序就是成片顺序。
 2. **写提示词和台词**。编辑 `prompts/<镜号>.image.md`、`.anim.md` 和清单里的 `narration`，然后 `wrally lint`，再 `wrally push --dry-run` → `wrally push`。
 3. **关键帧**：`wrally keyframe gen --dry-run` → 用户确认 → `wrally keyframe gen --wait --fetch`。把 `.wrally/sheets/keyframes-<镜号>.jpg` 给用户看，等用户说选哪张，再 `wrally keyframe pick 02 A 03 B …`。
 4. **视频**：`wrally video gen --dry-run` → 确认 → `wrally video gen --wait --fetch`。某一镜要指定结束画面时，先 `wrally keyframe pick 03 C --last` 选尾帧（候选序号或 asset_id），这一镜就走首尾帧模式；首尾帧模式还没有真实提交过，第一次用时告诉用户。

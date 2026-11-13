@@ -32,12 +32,16 @@ def keys(ws):
     ("00-02,99", ["00", "01", "02", "99"]),
     ("3", ["03"]),
     ("12, 13", ["12", "13"]),
+    ("13a,13b", ["13a", "13b"]),
+    ("3a, 04", ["03a", "04"]),
 ])  # fmt: skip
 def test_expand_keys(spec, expected):
     assert expand_keys(spec) == expected
 
 
-@pytest.mark.parametrize("spec", ["", "片头", "05-02", "01,01", "01-", "a-3"])
+@pytest.mark.parametrize(
+    "spec", ["", "片头", "05-02", "01,01", "01-", "a-3", "13A", "13ab", "13a-13c", "13a,13a"]
+)
 def test_bad_shots_is_a_preflight_error(spec):
     with pytest.raises(PreflightError) as e:
         expand_keys(spec)
