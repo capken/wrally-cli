@@ -21,7 +21,7 @@ from urllib.parse import quote
 from wrally.commands.common import is_skipped, letter, load_manifest, web_copies
 from wrally.errors import WrallyError
 from wrally.prompts import KINDS, Styles, composed, is_styled, load_styles, local_text
-from wrally.workspace import Workspace, overlay, write_if_changed
+from wrally.workspace import Workspace, overlay, plain, write_if_changed
 
 PAGE = "page.html"
 VERSION = "page.version.js"  # 在 .wrally/ 下
@@ -170,7 +170,9 @@ def _dig(ws: Workspace, data: dict[str, Any], dotted: object) -> Any:
     if not isinstance(dotted, str) or not dotted.strip():
         return None
     first, *rest = dotted.strip().split(".")
-    node: Any = overlay(ws.project().get(first), data.get(first))
+    base = ws.project().get(first)
+    # 清单里没有这一节时 overlay(base, None) 会返回 None，项目文件里的值就丢了
+    node: Any = overlay(base, data[first]) if first in data else plain(base)
     for part in rest:
         node = node.get(part) if isinstance(node, dict) else None
     return node

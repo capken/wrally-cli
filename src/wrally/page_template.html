@@ -249,7 +249,8 @@ summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var
 
   const stateOf = (shot, kind) => shot[kind].status.state;
   const webDiffers = shot => Object.values(shot.prompts).some(p => p && p.web === "differs");
-  const isOpen = shot => !shot.cut && webDiffers(shot) || KINDS.some(([kind]) => !SETTLED.includes(stateOf(shot, kind)));
+  const isOpen = shot => !shot.cut
+    && (webDiffers(shot) || KINDS.some(([kind]) => !SETTLED.includes(stateOf(shot, kind))));
   function worst(shot) {
     if (shot.cut) return "cut";
     const states = KINDS.map(([kind]) => stateOf(shot, kind));

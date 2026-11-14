@@ -369,6 +369,19 @@ def test_final_video_and_cut_shots_come_from_the_assembly_record(ws, tmp_path_fa
     assert any("新-01.mp4" in p for p, _ in page.signature(ep1))
 
 
+def test_assembly_record_only_in_the_project_file(ws, tmp_path_factory):
+    """单集清单里没有 assemble 小节时，用项目文件里的；单集写 null 表示这一集不要。"""
+    root, (ep1,) = project_with(ws, tmp_path_factory, names=("ep1",))
+    (root / "wrally.yaml").write_text(
+        'title: 示例片\npage: {cut: assemble.cut}\nassemble: {cut: ["00"]}\n', encoding="utf-8"
+    )
+    assert shot(ep1, "00")["cut"]
+    data = ep1.load()
+    data["assemble"] = None
+    ep1.save(data)
+    assert not shot(ep1, "00")["cut"]
+
+
 def test_without_page_section_the_manifest_video_is_shown(ws, tmp_path_factory):
     root, (ep1,) = project_with(ws, tmp_path_factory, names=("ep1",))
     data = ep1.load()
