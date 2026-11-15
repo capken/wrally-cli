@@ -110,6 +110,8 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 有项目文件时，每次重建单集页面都会顺带重建项目总览页 `index.html`（模板 `index_template.html`）。总览页只读各集的 `.wrally/page.summary.json`，卡片上要加新的数就加到 `page.summarize` 里。
 - 成片是合成脚本在 wrally 之外写的，合成完页面不会自己更新：跑一次 `wrally page`。
 - 页面内容只由输入决定，不要往里写时间戳，否则重跑会产生改动、开着的页面会不停刷新。
+- 页面默认是单镜视图（一镜一屏，整页不滚动：大图区加候选条，右栏放视频、旁白和提示词标签页），侧栏可切成原来的长列表，选择记在浏览器的 `localStorage`；不到 1000px 宽时侧栏收成顶栏、单镜视图照用，不到 640px（手机）一律用列表。列表在切过去时才建。画面比例取载入的图或视频的实际宽高（CSS 变量 `--ar`），竖屏时根元素加 `portrait`、换一套布局，比例不写进 wrally。页面不能改清单，选图仍用 `keyframe pick`，单镜视图只给出可复制的命令。
+- 页面上要露出某个元素时用 `revealIn` 只滚它所在的容器，不要用 `scrollIntoView`：侧栏是 sticky 的，会连带整页滚回去。
 - 页面文字一律由脚本用 `textContent` 写入，不要改成拼 HTML 字符串：提示词是任意文本。
 - 页面上「需在网页上改」「网页副本不同」的标识来自 `.wrally/web_copies.json`，由 `common.remember_web_copies` 在每次拿到完整场次列表时整份重写。新增会取场次列表的命令时也调一下它；只传完整的列表，传一部分会把其余镜头的记录清掉。
 - 素材状态的判断在 `page.py`，过期判断复用 `check.stale`；`status` 另有一套更粗的文字状态，改状态含义时两边都看一下。
@@ -192,6 +194,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 预置音色 `voice_preset`（加 `voice_fields`，不绑定参考音频、不能配旁白模板）只有单元测试，没有真实提交过。
 - 进度网页上的推荐候选图（每镜 `suggest`）只有单元测试，没有在真实浏览器里看过。
 - `web_copies.json`：那四集现有的记录是用 `.wrally/raw/` 里最近一次场次列表补出来的，没有经过真实的 `pull`；`pull`、`push`、生成命令写它只有单元测试。
+- `page` 的单镜视图（2026-11-15 加）：在夹具上用无界面 Chrome 注入按键核对过横屏、竖屏、换候选、空格对比、`V`、标签页、筛选、切列表和窄屏；没有在真实浏览器里手动用过，刷新后停在原来那镜和那张候选也没有实测。
 - `page`：开着的页面自动刷新（定时加载 `.wrally/page.version.js`）、侧栏随滚动高亮、`J`/`K` 跳镜和 `--watch` 没有在真实浏览器里实测；深色模式和窄屏只用无界面 Chrome 看过一眼。
 - `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1（现在会被兜底成一行 `internal_error`、退出码 4）。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
 - 项目文件、`rules`、`export` 和这次拆分之后，调用远端的命令只跑过 `pull`（2026-10-13，那四集零改动）；`push` 和三个生成命令还没跑过。离线的 `status`、`lint`、`check`、`page`、`export` 在那四集上逐一对比过。
