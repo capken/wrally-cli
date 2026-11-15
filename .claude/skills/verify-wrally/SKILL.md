@@ -57,15 +57,14 @@ bash "$S/drive.sh" "$RUN" status status -C "$RUN/project/ep1"
 
 要验证的行为夹具里没有（比如一个新的清单字段），就在 `$RUN/project/` 里像用户那样手改 `episode.yaml` 或 `wrally.yaml` 再驱动，并把改动前后的清单各存一份到 `$RUN/evidence/`。这类场景值得长期保留时，改 `fixture.sh` 并更新功能地图里的预期输出。
 
-页面截图用无界面 Chrome（macOS 上的路径；别的系统换成对应的可执行文件）：
+页面用 `browser.sh` 看（无界面 Chrome；macOS 以外设 `CHROME` 指向可执行文件）：
 
 ```
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars \
-  --user-data-dir="$RUN/chrome-profile" --window-size=1400,1800 --virtual-time-budget=3000 \
-  --screenshot="$RUN/evidence/page.png" "file://$RUN/project/ep1/page.html"
+bash "$S/browser.sh" shot "$RUN" "$RUN/project/ep1/page.html" page [1400,1800]   # 截图 → $RUN/evidence/page.png，再用 Read 看
+bash "$S/browser.sh" dom  "$RUN" "$RUN/project/ep1/page.html" page-dom           # 脚本跑完之后的 DOM → $RUN/evidence/page-dom.html
 ```
 
-然后用 Read 工具看这张图。
+`page.html` 的源文件里只有数据和脚本，卡片和 `data-open`（「未完成」筛选靠它）是在浏览器里画的。`dom` 会打印每张卡片的 `class`、`id` 和 `data-open`，筛选、折叠一类的行为看它，截图看不出来。
 
 ### 调远端的命令
 
@@ -77,7 +76,7 @@ bash "$S/drive.sh" "$RUN" status status -C "$RUN/project/ep1"
 
 - 每条命令的终端记录（`drive.sh` 自动写）。
 - 命令写出的文件的副本：`export.json`、`report.md`、`lint.md`、`page.summary.json`，以及改动前后的 `episode.yaml`。它们在 `$RUN/project/` 里，Cleanup 会删，所以要复制出来。
-- 页面截图。
+- 页面截图，以及要核对页面行为时 `browser.sh dom` 导出的 DOM。
 
 标准：
 
@@ -103,7 +102,8 @@ rm -rf "$RUN/project" "$RUN/cfg" "$RUN/chrome-profile"
 | `fixture.sh` | `RUN=$(bash "$S/fixture.sh" [目录])` | 建夹具，打印运行目录；目录里已有 `project/` 时拒绝并以 2 退出 |
 | `doctor.sh` | `bash "$S/doctor.sh" [--remote]` | 只读检查，有一项不过就以 1 退出 |
 | `drive.sh` | `bash "$S/drive.sh" "$RUN" <记录名> <wrally 参数…>` | 跑一条命令并留记录，退出码同 wrally |
-| `env.sh` | 被上面三个引用，不单独运行 | 定位仓库，决定驱动哪个 wrally |
+| `browser.sh` | `bash "$S/browser.sh" shot\|dom "$RUN" <html> <记录名> [宽,高]` | 截图或导出运行后的 DOM，写进 `$RUN/evidence/` |
+| `env.sh` | 被 `fixture.sh`、`doctor.sh`、`drive.sh` 引用，不单独运行 | 定位仓库，决定驱动哪个 wrally |
 
 ## 维护
 
