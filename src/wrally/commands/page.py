@@ -51,6 +51,8 @@ class PageReport:
     path: str
     changed: bool
     unit: str = "shots"
+    # 这一集的页面数据，供 `page --json` 直接交给别的程序读，省得去 HTML 里抠 __WRALLY_DATA__
+    data: dict[str, Any] | None = None
 
     @property
     def summary(self) -> str:
@@ -311,7 +313,7 @@ def build(ws: Workspace, *, index: bool = True) -> PageReport:
     project = ws.project_path()
     if index and project:
         build_index(project.parent)
-    return PageReport(shots=len(data["shots"]), path=PAGE, changed=changed)
+    return PageReport(shots=len(data["shots"]), path=PAGE, changed=changed, data=data)
 
 
 def _summary(folder: Path) -> dict[str, Any] | None:

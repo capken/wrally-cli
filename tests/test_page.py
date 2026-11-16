@@ -181,6 +181,14 @@ def test_watch_rebuilds_only_when_files_change(ws):
     assert "第二版" in (ws.root / "page.html").read_text(encoding="utf-8")
 
 
+def test_cli_page_json_carries_the_page_data(ws):
+    as_json = CliRunner().invoke(app, ["page", "-C", str(ws.root), "--json"])
+    payload = json.loads(as_json.output)
+    assert len(payload["data"]["shots"]) == 4
+    assert payload["data"]["shots"][0]["keyframe"]["status"]["label"]
+    assert embedded(ws) == payload["data"]  # 和写进 page.html 的那份一致，不是另算一遍
+
+
 def test_cli_page_prints_one_line(ws):
     result = CliRunner().invoke(app, ["page", "-C", str(ws.root)])
     assert result.exit_code == 0 and result.output.strip() == "page: 4 shots  -> page.html  (updated)"

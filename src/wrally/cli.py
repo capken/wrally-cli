@@ -203,9 +203,12 @@ def _kind(kind: str) -> str:
 
 
 def _emit(line: str, headers: tuple[str, ...], rows: list, as_json: bool, *, details: str | None = None,
-          notes: tuple[str, ...] = ()) -> None:  # fmt: skip
+          notes: tuple[str, ...] = (), data: dict | None = None) -> None:  # fmt: skip
     if as_json:
-        print(output.render_json(line, headers, rows, details=details))
+        extra = {"details": details}
+        if data is not None:
+            extra["data"] = data
+        print(output.render_json(line, headers, rows, **extra))
     else:
         print(output.render(line, headers, rows, details=details, notes=notes))
 
@@ -667,7 +670,7 @@ def page(
         report = page_cmd.build_index(directory, rebuild=True)
     else:
         report = page_cmd.build(ws)
-    _emit(report.summary, (), [], as_json)
+    _emit(report.summary, (), [], as_json, data=report.data)
     if open_:
         webbrowser.open((ws.root / report.path).resolve().as_uri())
     if watch:
