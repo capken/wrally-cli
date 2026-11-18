@@ -22,6 +22,13 @@ class CheckReport:
     warnings: int = 0
     report_path: str = ""
     notes: list[str] = field(default_factory=list)
+    # 每镜一份结构化结果，`check --json` 的 data 字段：别的程序不用去 report.md 里抠表格
+    shots: list[dict] = field(default_factory=list)
+    limits: dict = field(default_factory=dict)
+
+    @property
+    def data(self) -> dict:
+        return {"limits": self.limits, "shots": self.shots, "notes": self.notes}
 
     @property
     def summary(self) -> str:
@@ -87,6 +94,10 @@ def check(ws: Workspace, spec: str = "all") -> CheckReport:
     data = load_manifest(ws)
     rules = load_rules(ws, data)
     report = CheckReport(report_path=(ws.state_dir / "report.md").relative_to(ws.root).as_posix())
+    report.limits = {
+        "f0_max": rules.f0_max, "slow_max": rules.slow_max, "narration_max": rules.narration_max,
+        "channel_gap_max": rules.channel_gap_max, "noise_floor_max": rules.noise_floor_max,
+    }  # fmt: skip
     lines = []
     # 量音高要用 librosa，它是可选依赖：没装就跳过这一项并说明，其余照常检查
     pitch = rules.f0_max is not None and media.pitch_available()
@@ -153,6 +164,15 @@ def check(ws: Workspace, spec: str = "all") -> CheckReport:
             "; ".join(warnings),
         )
         report.rows.append(row)
+        report.shots.append({
+            "key": key,
+            "video": round(vlen, 2) if vlen else None,
+            "audio": round(alen, 2) if alen else None,
+            "slow": round(slow, 2) if slow else None,
+            "f0": f0,
+            "sheet": sheet or None,
+            "warnings": warnings,
+        })  # fmt: skip
         lines.append("| " + " | ".join([*row[:5], sheet or "-", row[5] or "-"]) + " |")
     ws.save(data)
     text = "\n".join([

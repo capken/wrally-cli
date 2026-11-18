@@ -123,6 +123,18 @@ def test_check_flags_pitch_slowdown_and_long_narration(ws, local_media):
     assert "| 99 | - | - | - | - | - | - |" in text
 
 
+def test_check_data_has_every_shot_not_only_flagged(ws, local_media):
+    data = check(ws).data
+    by_key = {s["key"]: s for s in data["shots"]}
+    assert list(by_key) == ["00", "01", "02", "99"]
+    assert by_key["01"] == {
+        "key": "01", "video": 8.0, "audio": 10.5, "slow": 1.31, "f0": 81,
+        "sheet": ".wrally/sheets/01.jpg", "warnings": ["slow x1.31 > 1.25"],
+    }  # fmt: skip
+    assert by_key["99"]["sheet"] is None and by_key["99"]["warnings"] == []
+    assert data["limits"]["slow_max"] == 1.25
+
+
 def test_check_reuses_sheets_and_cached_f0(ws, local_media):
     check(ws)
     check(ws)

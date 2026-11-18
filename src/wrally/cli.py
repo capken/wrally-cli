@@ -637,7 +637,7 @@ def check(shots: ShotsOpt = "all", directory: DirOpt = Path("."), as_json: JsonO
     """生成抽帧拼图和检查报告；终端只列有警告的镜头。"""
     report = check_cmd.check(Workspace(directory), shots)
     _emit(report.summary, check_cmd.HEADERS, report.flagged(), as_json, details=report.report_path,
-          notes=tuple(report.notes))  # fmt: skip
+          notes=tuple(report.notes), data=report.data)  # fmt: skip
 
 
 @app.command()
