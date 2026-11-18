@@ -35,6 +35,7 @@ uv run wrally new --project <ID> --name "EP4 …" --shots 00-11,99 --dry-run   #
 uv run wrally video gen --shots 02-05 --dry-run  # 生成命令先演练
 uv run wrally page --open                        # 生成进度网页 page.html 并打开；--watch 守着改动
 uv run wrally page -C <项目目录>                 # 重建各集页面和总览页 index.html
+uv run wrally serve --open                       # 本机网页服务（默认 localhost:8765），浏览器里看总览页和各集
 uv run wrally export -C <单集目录>               # 写 .wrally/export.json，给合成脚本用
 ```
 
@@ -57,12 +58,12 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 
 不涉及远端的辅助模块：`media.py`（图像比对、抽帧、音高）、`output.py`（表格和输出预算）。
 
-命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`，`video upscale` 在 `upscale.py`（接口层 `api/canvas.py` 的 `upscale_options`、`submit_upscale`）；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`；`projects`（列表）和 `projects create` 在 `projects.py`（接口层 `api/projects.py`）；`shots rm/order` 在 `shots.py`（接口层 `api/shots.py` 的 `delete_shots`、`sort_shots`）；`upload` 和「本地路径 → 媒资 ID」在 `upload.py`（接口层 `api/upload.py`，不调远端的判断和指纹在 `localfile.py`）。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
+命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` `serve` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`，`video upscale` 在 `upscale.py`（接口层 `api/canvas.py` 的 `upscale_options`、`submit_upscale`）；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`；`projects`（列表）和 `projects create` 在 `projects.py`（接口层 `api/projects.py`）；`shots rm/order` 在 `shots.py`（接口层 `api/shots.py` 的 `delete_shots`、`sort_shots`）；`upload` 和「本地路径 → 媒资 ID」在 `upload.py`（接口层 `api/upload.py`，不调远端的判断和指纹在 `localfile.py`）。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
 
 ## 写任何命令都要满足的约束
 
 - **输出有预算**：一行结论 + 不超过 15 行的表，总长不超过 30 行（`output.render` 负责截断）；明细写文件。`--json` 和 `-v` 同样不含 URL、提示词全文和返回体。中文直接 UTF-8 输出。
-- **文件即状态**：命令只依赖清单和 `prompts/`，不依赖对话记忆。`status` `check` `lint` `keyframe pick/sheet` `export` `page` 不调远端。
+- **文件即状态**：命令只依赖清单和 `prompts/`，不依赖对话记忆。`status` `check` `lint` `keyframe pick/sheet` `export` `page` `serve` 不调远端。
 - **幂等可重跑**：输入没变不重复提交，已下载的不重复下载，重跑 `pull` 不产生改动。写文件用 `workspace.write_if_changed`（内容相同不写，原子替换）。
 - **单镜错误不中断其他镜头**（`common.for_each`），结束后统一汇总；鉴权错误除外。远端返回的错误只在终端打一行错误码和原始返回的路径。
 - **退出码**：0 全部成功；1 部分失败或超时；2 前置检查不通过，未提交任何任务；3 鉴权或网络错误；4 意外错误（`cli.handle_errors` 兜底，追踪栈写进凭证目录的 `last-crash.txt`，终端不打追踪栈）。用 `errors.py` 里对应的异常类型，不要靠退出码 4 表达预期内的错误。`--json` 时错误也在标准输出给一行 JSON。
@@ -109,9 +110,11 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - `page` 生成单集目录下的 `page.html`（模板是 `src/wrally/page_template.html`）。会改清单或下载素材的命令都挂了 `cli.refreshes_page`，结束后自动重建；新增这类命令时也要挂上。它不能往标准输出写东西，也不能改变原命令的退出码。
 - 有项目文件时，每次重建单集页面都会顺带重建项目总览页 `index.html`（模板 `index_template.html`）。总览页只读各集的 `.wrally/page.summary.json`，卡片上要加新的数就加到 `page.summarize` 里。
 - 成片是合成脚本在 wrally 之外写的，合成完页面不会自己更新：跑一次 `wrally page`。
+- `wrally serve`（2026-11-18 加，`commands/serve.py`）用标准库的 `ThreadingHTTPServer` 只读地服务项目目录（在属于项目的单集目录里运行也一样，打开时直接到那一集；不属于项目的单集只服务它自己）。启动时把各集页面和总览页建一遍；之后收到某一集的 `page.html` 或 `.wrally/page.version.js` 的请求时，用 `page.signature` 看这一集的文件变没变，变了才重建（总览页的请求看每一集），所以开着的页面靠原来的定时轮询就能跟上手改的提示词和清单。重建失败时照旧给上次的页面，同一个错误在标准错误里只提示一次。视频要能拖动，自己实现了单段的 Range 请求（标准库不支持）。不列目录、不打请求日志；默认只监听 127.0.0.1，端口被占用时往后找 20 个；SIGTERM 和 Ctrl-C 一样退出码 0。
 - 页面内容只由输入决定，不要往里写时间戳，否则重跑会产生改动、开着的页面会不停刷新。
-- 页面默认是单镜视图（一镜一屏，整页不滚动：大图区加候选条，右栏放视频、旁白和提示词标签页），侧栏可切成原来的长列表，选择记在浏览器的 `localStorage`；不到 1000px 宽时侧栏收成顶栏、单镜视图照用，不到 640px（手机）一律用列表。列表在切过去时才建。画面比例取载入的图或视频的实际宽高（CSS 变量 `--ar`），竖屏时根元素加 `portrait`、换一套布局，比例不写进 wrally。页面不能改清单，选图仍用 `keyframe pick`，单镜视图只给出可复制的命令。
-- 页面上要露出某个元素时用 `revealIn` 只滚它所在的容器，不要用 `scrollIntoView`：侧栏是 sticky 的，会连带整页滚回去。
+- 页面是一屏三栏（2026-11-17 照 wrally-dsh 的只读看板样稿改的）：顶上是标题、剧集切换和「播放成片」，下面一条概览（整体进度、当前阶段、要处理的镜数、首尾帧和单图各几镜、各阶段），一排筛选（全部 / 未完成 / 需处理 / 生成中 / 失败）；左栏镜头列表自己滚动，中栏是这一镜的画面（有尾帧时并排放起始帧和尾帧，可切到视频）、三项规格、提醒和候选条，右栏是三类提示词的摘要、台词和旁白、检查（素材状态，以及清单里缓存的音高、声道差、底噪对 `rules` 的上限）。提示词全文、参考图、候选大图和成片都在浮层里，只有浮层正文会滚动，整页不滚动；不到 900px 宽时改成一栏往下排、整页滚动。原来的长列表视图去掉了。画面比例取载入的图或视频的实际宽高（CSS 变量 `--ar`），比例不写进 wrally。页面不能改清单，选图仍用 `keyframe pick`，候选大图里只给出可复制的命令（含 `--last`）。
+- 参考图来自每镜的 `keyframe.refs`（`page._resolve_refs`）：镜号取那一镜的选用图，`ref_assets` 里的本地文件直接引用；写媒资 ID 的依次找：`page.previews`（媒资 ID → 本地预览图，项目文件或清单里写，只影响页面）、这一集下载过的同一个媒资（某镜的候选或选用图）、同一项目别的集下载过的，都没有就只显示名字（page 不调远端）。
+- 页面上要露出某个元素时用 `revealIn` 只滚它所在的容器，不要用 `scrollIntoView`：会连带整页一起滚。
 - 页面文字一律由脚本用 `textContent` 写入，不要改成拼 HTML 字符串：提示词是任意文本。
 - 页面上「需在网页上改」「网页副本不同」的标识来自 `.wrally/web_copies.json`，由 `common.remember_web_copies` 在每次拿到完整场次列表时整份重写。新增会取场次列表的命令时也调一下它；只传完整的列表，传一部分会把其余镜头的记录清掉。
 - 素材状态的判断在 `page.py`，过期判断复用 `check.stale`；`status` 另有一套更粗的文字状态，改状态含义时两边都看一下。
@@ -194,8 +197,9 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 预置音色 `voice_preset`（加 `voice_fields`，不绑定参考音频、不能配旁白模板）只有单元测试，没有真实提交过。
 - 进度网页上的推荐候选图（每镜 `suggest`）只有单元测试，没有在真实浏览器里看过。
 - `web_copies.json`：那四集现有的记录是用 `.wrally/raw/` 里最近一次场次列表补出来的，没有经过真实的 `pull`；`pull`、`push`、生成命令写它只有单元测试。
-- `page` 的单镜视图（2026-11-15 加）：在夹具上用无界面 Chrome 注入按键核对过横屏、竖屏、换候选、空格对比、`V`、标签页、筛选、切列表和窄屏；没有在真实浏览器里手动用过，刷新后停在原来那镜和那张候选也没有实测。
-- `page`：开着的页面自动刷新（定时加载 `.wrally/page.version.js`）、侧栏随滚动高亮、`J`/`K` 跳镜和 `--watch` 没有在真实浏览器里实测；深色模式和窄屏只用无界面 Chrome 看过一眼。
+- `page` 的三栏版式（2026-11-17 改）：在夹具和一集真实素材的副本上用无界面 Chrome 注入点击看过横屏、窄屏、深色、首尾帧、参考图、候选大图、提示词全文、视频和不进成片 / 另做视频的镜头；竖屏的片子、键盘（`J`/`K`、`V`、左右键、`Esc`）、复制命令、刷新后停在原来那镜和那张候选都没有在真实浏览器里实测。
+- `page`：开着的页面自动刷新（定时加载 `.wrally/page.version.js`）和 `--watch` 没有在真实浏览器里实测。
+- `serve`：在夹具上用 curl 核对过跳转、404、Range、`no-cache`、改提示词后版本号变化，无界面 Chrome 经 HTTP 打开过总览页和单集页面，伪终端里 Ctrl-C 退出码 0；没有在真实浏览器里拖过视频进度，也没在真实项目上跑过。
 - `audio gen --wait` 崩过一次（2026-10-06）：13 镜提交成功后，等待阶段从 `common.for_each` 抛出未处理的 `CancelledError`，打出整段追踪栈，退出码 1（现在会被兜底成一行 `internal_error`、退出码 4）。原因没查明。任务其实已受理，用 `wait audio`、`fetch audio` 接上即可，不要重新提交。
 - 项目文件、`rules`、`export` 和这次拆分之后，调用远端的命令只跑过 `pull`（2026-10-13，那四集零改动）；`push` 和三个生成命令还没跑过。离线的 `status`、`lint`、`check`、`page`、`export` 在那四集上逐一对比过。
 - `export` 里素材缺失或过期的标记、没装 `librosa` 时跳过音高，只有单元测试。

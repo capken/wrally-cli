@@ -1,6 +1,6 @@
 """page：把一集的当前进展做成一个网页 page.html。只读本地文件，不调用远端。
 
-每镜一张卡片：选用的关键帧和候选、视频、旁白、三类提示词，以及每类素材的状态。
+一屏三栏：镜头列表；这一镜的画面（有尾帧时并排放起始帧和尾帧）、视频和候选；提示词、旁白和检查。
 图片、视频、音频用相对路径引用工作区里已下载的文件，不内嵌；地址带文件修改时间，换过的素材不会被缓存挡住。
 
 页面内容变了才重写。每次都另写一个 .wrally/page.version.js，开着的页面定时加载它来发现更新
@@ -21,6 +21,7 @@ from urllib.parse import quote
 from wrally.commands.common import is_skipped, letter, load_manifest, web_copies
 from wrally.errors import WrallyError
 from wrally.prompts import KINDS, Styles, composed, is_styled, load_styles, local_text
+from wrally.rules import load_rules
 from wrally.workspace import Workspace, overlay, plain, write_if_changed
 
 PAGE = "page.html"
@@ -85,11 +86,13 @@ def _keyframe(ws: Workspace, entry: dict) -> dict[str, Any]:
     # 清单里手写的推荐（suggest: {keyframe: B, note: 理由}），只用来在页面上标出来，不影响选图
     hint = entry.get("suggest") or {}
     suggest = str(hint.get("keyframe") or "").strip().upper() if isinstance(hint, dict) else ""
+    last = kf.get("last")  # 尾帧（keyframe pick --last），有它时视频走首尾帧模式
     candidates = [
         {
             "label": letter(i),
             "src": _src(ws, _find(directory, letter(i))),
             "picked": asset_id == picked,
+            "last": asset_id == last,
             "suggested": letter(i) == suggest,
         }
         for i, asset_id in enumerate(ids)
@@ -112,9 +115,12 @@ def _keyframe(ws: Workspace, entry: dict) -> dict[str, Any]:
         status = _state("skipped" if is_skipped(entry, "keyframe") else "none")
     pick = letter(ids.index(picked)) if picked in ids else ""
     note = str(hint.get("note") or "") if suggest else ""
+    last_pick = (letter(ids.index(last)) if last in ids else str(last)) if last else ""
+    last_src = _src(ws, _find(directory, last_pick)) if last in ids else None
     return {
         "status": status, "src": src, "pick": pick, "candidates": candidates,
-        "suggest": suggest, "suggest_note": note,
+        "suggest": suggest, "suggest_note": note, "last": last_pick, "last_src": last_src,
+        "refs": [str(r) for r in kf.get("refs") or []],
     }  # fmt: skip
 
 
@@ -212,6 +218,12 @@ def collect(ws: Workspace) -> dict[str, Any]:
         styles, note = Styles(), f"{e.code} {e.hint}".strip()
     copies = web_copies(ws) or {}
     final, cut = _final(ws, data)
+    try:
+        rules = load_rules(ws, data)
+        limits = {"f0_max": rules.f0_max, "channel_gap_max": rules.channel_gap_max,
+                  "noise_floor_max": rules.noise_floor_max}  # fmt: skip
+    except WrallyError:
+        limits = {}  # 规则写错了：页面照样建，只是不标超限
     shots = []
     for entry in data["shots"]:
         web = copies.get(str(entry.get("story_id"))) or {}
@@ -220,7 +232,11 @@ def collect(ws: Workspace) -> dict[str, Any]:
         except WrallyError:
             stale = []  # 公共文本读不出来，上面已经记了
         audio = _media(ws, entry, "audio", stale)
-        f0 = (entry.get("audio") or {}).get("f0")
+        # check 量过的值缓存在清单里，页面只读，不重新量
+        measured = {
+            name: value if isinstance(value := (entry.get("audio") or {}).get(name), (int, float)) else None
+            for name in ("f0", "channel_gap", "noise_floor")
+        }
         key = str(entry["key"])
         video = _media(ws, entry, "video", stale)
         replaced = None
@@ -236,20 +252,84 @@ def collect(ws: Workspace) -> dict[str, Any]:
             "narration": str(entry.get("narration") or ""),
             "keyframe": _keyframe(ws, entry),
             "video": video,
-            "audio": audio | {"f0": f0 if isinstance(f0, (int, float)) else None},
+            "audio": audio | measured,
             "prompts": {kind: _prompt(ws, styles, entry, kind, web.get(kind)) for kind in KINDS},
         })  # fmt: skip
+    _resolve_refs(ws, data, shots)
     project = ws.project_path()
     return {
         "name": ws.root.resolve().name,
         "title": str(data.get("title") or ""),
         "note": note,
         "film": _src(ws, ws.output_path(data)),
+        "limits": limits,
         "shots": shots,
         # 有项目文件时页面上多一个回总览页的入口和各集之间的切换
         "index": f"../{INDEX}" if project and project.parent == ws.root.resolve().parent else None,
         "episodes": [d.name for d in episode_dirs(project.parent)] if project else [],
     }
+
+
+def _downloaded(ws: Workspace, source: Workspace, data: dict[str, Any], local: dict[str, str]) -> None:
+    """source 那一集下载过的关键帧（每镜的候选和选用图）：媒资 ID → ws 页面上的地址，已有的不覆盖。"""
+    for entry in data.get("shots") or []:
+        kf = entry.get("keyframe") or {}
+        ids = [str(c) for c in kf.get("candidates") or []]
+        directory = source.state_dir / "keyframes" / str(entry["key"])
+        for i, asset_id in enumerate(ids):
+            if not local.get(asset_id):
+                local[asset_id] = _src(ws, _find(directory, letter(i))) or ""
+        if kf.get("asset_id") and kf["asset_id"] not in ids and not local.get(str(kf["asset_id"])):
+            local[str(kf["asset_id"])] = _src(ws, _find(directory, f"pick-{kf['asset_id']}")) or ""
+
+
+def _previews(ws: Workspace, data: dict[str, Any]) -> dict[str, Path]:
+    """`page.previews`：媒资 ID → 本地预览图，给不属于任何一镜的参考图（角色设定图之类）在页面上配图。
+    只影响页面，生成照样用媒资 ID。路径先按单集目录找，再按项目目录找。"""
+    previews = ws.settings(data, "page").get("previews")
+    project = ws.project_path()
+    bases = [ws.root] + ([project.parent] if project else [])
+    found: dict[str, Path] = {}
+    for asset_id, value in previews.items() if isinstance(previews, dict) else ():
+        if isinstance(value, str) and value.strip():
+            paths = [base / Path(value).expanduser() for base in bases]
+            found[str(asset_id)] = next((p for p in paths if p.is_file()), paths[-1])
+    return found
+
+
+def _resolve_refs(ws: Workspace, data: dict[str, Any], shots: list[dict]) -> None:
+    """每镜 keyframe.refs → 参考图。镜号取那一镜的选用图；ref_assets 里写成本地文件的直接引用那个文件。
+    写的是媒资 ID 的依次找：`page.previews` 里登记的预览图、这一集下载过的同一个媒资（某镜的候选或选用图）、
+    同一项目里别的集下载过的；都没有就只显示名字（下载地址不出接口层，page 也不调远端）。
+    和 keyframe gen 一样镜号优先。
+    """
+    named = ws.settings(data, "ref_assets")
+    by_key = {s["key"]: s for s in shots}
+    local = {asset_id: _src(ws, path) or "" for asset_id, path in _previews(ws, data).items()}
+    _downloaded(ws, ws, data, local)
+    wanted = {str(v) for v in named.values() if v and not ws.media_file(v)}
+    project = ws.project_path()
+    if project and any(not local.get(v) for v in wanted):
+        for folder in episode_dirs(project.parent):
+            if folder.resolve() == ws.root.resolve():
+                continue
+            other = Workspace(folder)
+            try:
+                _downloaded(ws, other, other.load() or {}, local)
+            except Exception:  # noqa: BLE001, S112
+                continue  # 别的集清单写坏了不影响这一集
+    for s in shots:
+        refs = []
+        for name in s["keyframe"]["refs"]:
+            if name in by_key:
+                refs.append({"name": name, "kind": "shot", "src": by_key[name]["keyframe"]["src"]})
+            elif named.get(name):
+                path = ws.media_file(named[name])
+                src = _src(ws, path) if path else local.get(str(named[name])) or None
+                refs.append({"name": name, "kind": "file" if path else "asset", "src": src})
+            else:
+                refs.append({"name": name, "kind": "unknown", "src": None})
+        s["keyframe"]["refs"] = refs
 
 
 def episode_dirs(project_dir: Path) -> list[Path]:
@@ -364,7 +444,7 @@ def signature(ws: Workspace) -> tuple:
     files = [ws.manifest_path, *([project] if project else []), *sorted(ws.root.glob("*.mp4"))]
     try:
         data = load_manifest(ws)
-        files += sorted(_final(ws, data)[0].values())
+        files += sorted(_final(ws, data)[0].values()) + sorted(_previews(ws, data).values())
     except Exception:  # noqa: BLE001, S110
         pass  # 清单正改到一半，下一轮再算
     folders = [ws.root / name for name in WATCHED] + ([project.parent / "styles"] if project else [])

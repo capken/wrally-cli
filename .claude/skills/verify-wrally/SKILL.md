@@ -64,7 +64,7 @@ bash "$S/browser.sh" shot "$RUN" "$RUN/project/ep1/page.html" page [1400,1800]  
 bash "$S/browser.sh" dom  "$RUN" "$RUN/project/ep1/page.html" page-dom           # 脚本跑完之后的 DOM → $RUN/evidence/page-dom.html
 ```
 
-`page.html` 的源文件里只有数据和脚本，卡片和 `data-open`（「未完成」筛选靠它）是在浏览器里画的。`dom` 会打印每张卡片的 `class`、`id` 和 `data-open`，筛选、折叠一类的行为看它，截图看不出来。
+`page.html` 的源文件里只有数据和脚本，左栏的镜头按钮和 `data-open`（「未完成」筛选靠它）是在浏览器里画的。`dom` 会打印每个镜头按钮的 `class`、`data-shot` 和 `data-open`，筛选一类的行为看它，截图看不出来。
 
 ### 调远端的命令
 

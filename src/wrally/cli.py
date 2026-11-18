@@ -3,6 +3,7 @@
 import functools
 import json
 import re
+import signal
 import sys
 import traceback
 import webbrowser
@@ -31,6 +32,7 @@ from wrally.commands import page as page_cmd
 from wrally.commands import projects as projects_cmd
 from wrally.commands import pull as pull_cmd
 from wrally.commands import push as push_cmd
+from wrally.commands import serve as serve_cmd
 from wrally.commands import shots as shots_cmd
 from wrally.commands import smoke as smoke_cmd
 from wrally.commands import status as status_cmd
@@ -679,6 +681,41 @@ def page(
             page_cmd.watch(directory)
         except KeyboardInterrupt:
             pass
+
+
+@app.command()
+@handle_errors
+def serve(
+    port: Annotated[int, typer.Option("--port", help="端口，被占用时往后找；0 由系统挑")] = serve_cmd.PORT,
+    host: Annotated[str, typer.Option("--host", help="监听地址；默认只有本机能访问")] = serve_cmd.HOST,
+    open_: Annotated[bool, typer.Option("--open", help="起来后用浏览器打开")] = False,
+    directory: DirOpt = Path("."),
+    as_json: JsonOpt = False,
+) -> None:
+    """起一个本机网页服务，在浏览器里看项目总览页和各集的进度网页，直到 Ctrl-C。不调用远端。
+
+    在项目目录或单集目录下运行。文件变了，请求页面时自动重建，开着的页面会自己刷新。
+    """
+    site = serve_cmd.locate(directory)
+    serve_cmd.build_all(site)
+    server = serve_cmd.bind(site, host, port)
+    address = serve_cmd.url(server, site)
+    _emit(f"serving {serve_cmd.describe(site)}  -> {address}  (Ctrl-C to stop)", (), [], as_json,
+          data={"url": address, "root": str(site.root)})  # fmt: skip
+    sys.stdout.flush()
+    if open_:
+        webbrowser.open(address)
+
+    def stop(*_: object) -> None:
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, stop)  # kill 和 Ctrl-C 一样正常退出
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
 
 
 # ---------- 单独生成：不用项目目录和清单 ----------

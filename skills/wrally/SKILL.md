@@ -14,7 +14,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | 目录里有 | 这是什么 | 怎么跑命令 |
 | --- | --- | --- |
 | `episode.yaml` | 单集目录（工作区） | 直接跑 |
-| `wrally.yaml`，没有 `episode.yaml` | 项目目录，下面的子目录各是一集 | `wrally status`、`wrally page` 直接跑；其余命令加 `-C <单集目录>` |
+| `wrally.yaml`，没有 `episode.yaml` | 项目目录，下面的子目录各是一集 | `wrally status`、`wrally page`、`wrally serve` 直接跑；其余命令加 `-C <单集目录>` |
 | 都没有，只想单独生成几个文件 | 不需要项目 | 用 `wrally gen`，见下文「单独生成」 |
 | 都没有，要做一集 | 还没建项目 | 读 `references/project-setup.md` |
 
@@ -35,6 +35,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `keyframe pick 02 A 03 B …` | 选定关键帧（只改本地）；加 `--last` 选的是尾帧，这几镜的视频改走首尾帧模式，给 `-` 取消 | 否 | 否 |
 | `export [--shots]` | 合成要用的输入 → `.wrally/export.json` | 否 | 否 |
 | `page [--open] [--watch]` | 进度网页 `page.html`；项目目录下重建各集和总览页 | 否 | 否 |
+| `serve [--open] [--port 8765]` | 本机网页服务，浏览器里看总览页和各集页面，直到 Ctrl-C；文件变了刷新页面就是新的。在项目或单集目录下运行；会一直占着终端，Agent 要放到后台跑，把打印的地址告诉用户 | 否 | 否 |
 | `pull [--force]` | 拉场次列表，建立或更新清单和 `prompts/` | 是 | 否 |
 | `push [--shots] [--dry-run]` | 把本地提示词写到远端（只写不同的镜头） | 是，**覆盖远端** | 否 |
 | `projects [--search …] [--trash]` | 列出 WorkRally 上的全部项目（ID、名称、几集）；当前目录所属的标 `*`。找 `project_id` 用它 | 是 | 否 |

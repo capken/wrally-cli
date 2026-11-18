@@ -6,329 +6,454 @@
 <title>wrally</title>
 <style>
 :root {
-  --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --faint: #86868b;
-  --line: rgba(0, 0, 0, .08); --fill: rgba(0, 0, 0, .05); --accent: #0071e3; --media: #000;
-  --bar: rgba(245, 245, 247, .82);
-  --green: #1d8a3c; --orange: #b25000; --red: #d70015; --gray: #6e6e73;
-  --green-bg: rgba(52, 199, 89, .16); --orange-bg: rgba(255, 149, 0, .16);
-  --red-bg: rgba(255, 59, 48, .14); --gray-bg: rgba(0, 0, 0, .06); --blue-bg: rgba(0, 113, 227, .1);
-  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .04);
-  --side: 272px; --ar: 16 / 9;
+  --bg: #ffffff; --soft: #f5f5f7; --surface: #ffffff; --seg: rgba(118, 118, 128, .12); --seg-item: #ffffff;
+  --ink: #1d1d1f; --ink-2: #6e6e73; --ink-3: #86868b; --line: rgba(0, 0, 0, .08); --line-2: rgba(0, 0, 0, .12);
+  --accent: #0071e3; --accent-soft: rgba(0, 113, 227, .10); --accent-2: #bf5af2; --accent-2-soft: rgba(191, 90, 242, .12);
+  --warn: #b25000; --warn-dot: #ff9f0a; --warn-bg: #fff4e6; --ok: #1d7a37; --ok-dot: #34c759;
+  --bad: #d70015; --bad-bg: rgba(255, 59, 48, .12); --media: #0b1119;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 10px 30px rgba(0, 0, 0, .06);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", sans-serif;
+  --ar: 16 / 9;
+  color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #000000; --card: #1d1d1f; --text: #f5f5f7; --muted: #a1a1a6; --faint: #86868b;
-    --line: rgba(255, 255, 255, .12); --fill: rgba(255, 255, 255, .08); --accent: #2997ff;
-    --bar: rgba(0, 0, 0, .78);
-    --green: #30d158; --orange: #ff9f0a; --red: #ff453a; --gray: #a1a1a6;
-    --gray-bg: rgba(255, 255, 255, .1); --blue-bg: rgba(41, 151, 255, .16); --shadow: none;
+    --bg: #000000; --soft: #1c1c1e; --surface: #1c1c1e; --seg: rgba(118, 118, 128, .24); --seg-item: #3a3a3c;
+    --ink: #f5f5f7; --ink-2: #a1a1a6; --ink-3: #8e8e93; --line: rgba(255, 255, 255, .11); --line-2: rgba(255, 255, 255, .18);
+    --accent: #2997ff; --accent-soft: rgba(41, 151, 255, .16); --accent-2: #da8fff; --accent-2-soft: rgba(218, 143, 255, .16);
+    --warn: #ffd60a; --warn-bg: rgba(255, 214, 10, .12); --ok: #30d158; --bad: #ff453a; --bad-bg: rgba(255, 69, 58, .16);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 16px 40px rgba(0, 0, 0, .5);
   }
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 20px; }
+html, body { margin: 0; height: 100%; }
 body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font: 17px/1.47 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
-  letter-spacing: -.01em; -webkit-font-smoothing: antialiased;
+  background: var(--bg); color: var(--ink); font: 13px/20px var(--font); -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
-button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; }
-.layout { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); max-width: 1280px; margin: 0 auto; }
-
-/* 侧栏：标题、进度、筛选和镜头导航，滚动时始终留在原位 */
-.side {
-  position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 18px;
-  padding: 28px 14px 16px 22px; min-width: 0;
-}
-.crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; font-size: 12px; margin-bottom: -6px; }
-.crumbs a { color: var(--accent); text-decoration: none; padding: 2px 6px; border-radius: 980px; text-transform: uppercase; }
-.crumbs a.back { padding-left: 0; margin-right: 2px; text-transform: none; font-size: 13px; }
-.crumbs a:hover { text-decoration: underline; }
-.crumbs a[aria-current="page"] { background: var(--fill); color: var(--text); font-weight: 600; }
-.eyebrow { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-h1 {
-  margin: 2px 0 0; font: 600 28px/1.14 -apple-system, "SF Pro Display", "PingFang SC", sans-serif;
-  letter-spacing: -.015em; overflow-wrap: anywhere;
-}
-.fresh { font-size: 12px; color: var(--faint); margin-top: 6px; min-height: 18px; }
-.fresh button { background: var(--accent); color: #fff; padding: 4px 12px; border-radius: 980px; font-size: 12px; }
-.stats { display: grid; gap: 10px; }
-.stat { display: grid; grid-template-columns: 1fr auto; align-items: baseline; row-gap: 5px; font-size: 13px; }
-.stat .what { color: var(--muted); }
-.stat .num { font-weight: 600; font-variant-numeric: tabular-nums; }
-.stat .num small { font-size: inherit; font-weight: 400; color: var(--faint); }
-.meter { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--fill); overflow: hidden; }
-.meter i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
-.seg { display: flex; background: var(--fill); border-radius: 980px; padding: 2px; }
-.seg button { flex: 1; font-size: 13px; padding: 4px 12px; border-radius: 980px; color: var(--muted); white-space: nowrap; }
-.seg button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
-.nav { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -8px; padding: 0 0 8px; overscroll-behavior: contain; }
-.nav a {
-  display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: 9px; text-decoration: none;
-  color: var(--text); font-size: 14px; line-height: 1.3;
-}
-.nav a:hover { background: var(--fill); }
-.nav a[aria-current="true"] { background: var(--card); box-shadow: var(--shadow); }
-.nav a b { font-weight: 600; font-variant-numeric: tabular-nums; flex: none; }
-.nav a .snip { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nav a[aria-current="true"] .snip { color: var(--text); }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--gray); flex: none; }
-.dot.done, .dot.skipped { background: var(--green); }
-.dot.stale, .dot.pending, .dot.running, .dot.missing { background: var(--orange); }
-.dot.failed { background: var(--red); }
-.dot.film { background: var(--accent); }
-.dot.cut { background: var(--faint); }
-.keys { font-size: 12px; color: var(--faint); }
-kbd {
-  font: 11px ui-monospace, "SF Mono", monospace; background: var(--fill); border-radius: 4px; padding: 1px 5px;
-}
-
-/* 主栏 */
-main { padding: 28px 22px 96px 14px; min-width: 0; }
-.warn { margin: 0 0 16px; font-size: 14px; color: var(--orange); }
-.shot { background: var(--card); border-radius: 22px; padding: 28px; margin-bottom: 20px; box-shadow: var(--shadow); }
-.shot.cut > :not(header):not(.final) { opacity: .45; }
-.final { margin: 12px 0 0; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; background: var(--fill); color: var(--muted); }
-.final b { color: var(--text); font-weight: 600; }
-.shot > header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-.shot h2 {
-  margin: 0; font: 600 40px/1.1 -apple-system, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -.02em;
-  font-variant-numeric: tabular-nums;
-}
-.pills { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
-.pill {
-  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 3px 10px;
-  border-radius: 980px; background: var(--gray-bg); color: var(--gray); white-space: nowrap;
-}
-.pill.done { background: var(--green-bg); color: var(--green); }
-.pill.stale, .pill.pending, .pill.running, .pill.missing { background: var(--orange-bg); color: var(--orange); }
-.pill.failed { background: var(--red-bg); color: var(--red); }
-.line { margin: 14px 0 0; font-size: 21px; line-height: 1.38; font-weight: 500; letter-spacing: -.005em; }
-.line.none { color: var(--faint); font-weight: 400; font-size: 17px; }
-.media { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px; }
-figure { margin: 0; min-width: 0; }
-.frame {
-  position: relative; aspect-ratio: var(--ar); border-radius: 14px; overflow: hidden; background: var(--fill);
-  display: grid; place-items: center; color: var(--faint); font-size: 14px;
-}
-.frame img, .frame video { width: 100%; height: 100%; object-fit: contain; background: var(--media); display: block; }
-.frame img { cursor: zoom-in; }
-figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; display: flex; gap: 8px; }
-figcaption b { color: var(--text); font-weight: 600; }
-.voice { display: flex; align-items: center; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
-.voice .tag { font-size: 13px; color: var(--muted); }
-.voice audio { flex: 1; min-width: 240px; height: 36px; }
-.voice .empty { flex: 1; font-size: 14px; color: var(--faint); }
-.film .frame { margin-top: 18px; border-radius: 16px; max-width: 720px; }
-.film p { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
-details { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; }
-details + details { margin-top: 14px; }
-summary {
-  list-style: none; cursor: pointer; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px;
-}
-summary::-webkit-details-marker { display: none; }
-summary::before {
-  content: ""; width: 7px; height: 7px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint);
-  transform: rotate(-45deg); transition: transform .3s ease; margin: 0 4px 0 2px;
-}
-details[open] > summary::before { transform: rotate(45deg); }
-summary small { font-weight: 400; color: var(--muted); font-size: 13px; }
-summary .copy { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--accent); }
-.cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 14px; }
-.cand {
-  position: relative; aspect-ratio: var(--ar); border-radius: 10px; overflow: hidden; background: var(--fill);
-  display: grid; place-items: center; font-size: 12px; color: var(--faint);
-}
-.cand img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
-.cand.picked { outline: 3px solid var(--accent); outline-offset: -3px; }
-.cand span {
-  position: absolute; left: 6px; top: 6px; font-size: 12px; font-weight: 600; color: #fff;
-  background: rgba(0, 0, 0, .55); border-radius: 6px; padding: 1px 7px;
-}
-.cand.picked span { background: var(--accent); }
-.cand.suggested { outline: 3px dashed var(--orange); outline-offset: -3px; }
-.cand.picked.suggested { outline-style: solid; }
-.cand em {
-  position: absolute; right: 6px; top: 6px; font-size: 12px; font-weight: 600; font-style: normal; color: #fff;
-  background: var(--orange); border-radius: 6px; padding: 1px 7px;
-}
-.suggest-note { font-size: 13px; color: var(--orange); margin: 10px 0 0; }
-.prompt { margin: 12px 0 0; font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.prompt .common { color: var(--faint); }
-.prompt-note { font-size: 13px; color: var(--orange); margin: 8px 0 0; }
-.web { font-size: 12px; font-weight: 500; padding: 2px 9px; border-radius: 980px; white-space: nowrap;
-  background: var(--blue-bg); color: var(--accent); }
-.web.differs { background: var(--orange-bg); color: var(--orange); }
-.web-note { font-size: 13px; line-height: 1.5; margin: 12px 0 0; padding: 10px 14px; border-radius: 12px;
-  background: var(--blue-bg); color: var(--text); }
-.web-note.differs { background: var(--orange-bg); }
-.pill.web-pill { background: var(--blue-bg); color: var(--accent); }
-.pill.web-pill.differs { background: var(--orange-bg); color: var(--orange); }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; margin: 0; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .hidden { display: none !important; }
-.nothing { text-align: center; color: var(--muted); padding: 64px 0; }
-/* 竖屏的片子：列表里的画面别撑得太高 */
-.portrait .media .frame { max-height: 72vh; }
+.cap {
+  color: var(--ink-3); font-size: 10px; line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+}
+.app { display: flex; flex-direction: column; height: 100vh; }
+.wrap { width: 100%; max-width: 1480px; margin: 0 auto; padding-left: 20px; padding-right: 20px; }
 
-/* 单镜视图：一镜一屏，整页不滚动。左边大图加候选条，右边视频、旁白和提示词 */
-#focus { display: none; }
-body.single { overflow: hidden; }
-.single .layout { max-width: none; height: 100vh; }
-.single main { height: 100vh; padding: 20px 22px 18px 14px; display: flex; flex-direction: column; }
-.single #list { display: none; }
-.single #focus { display: flex; flex: 1; min-height: 0; flex-direction: column; }
-.focus {
-  flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--card); border-radius: 22px;
-  padding: 18px 22px 20px; box-shadow: var(--shadow);
+/* 头部：剧集切换、标题、汇总，右边是播放成片 */
+.top { flex: none; display: flex; align-items: flex-end; gap: 16px; padding-top: 12px; padding-bottom: 8px; }
+.head-text { min-width: 0; }
+.eyebrow { display: flex; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.eyebrow::-webkit-scrollbar { display: none; }
+.eyebrow a {
+  color: var(--accent); text-decoration: none; padding: 0 6px; border-radius: 999px; text-transform: uppercase;
+  font-size: 10px; line-height: 16px; font-weight: 600; letter-spacing: .06em; white-space: nowrap;
 }
-.focus > header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; flex: none; }
-.focus h2 {
-  margin: 0; font: 600 32px/1.1 -apple-system, "SF Pro Display", "PingFang SC", sans-serif; letter-spacing: -.02em;
-  font-variant-numeric: tabular-nums;
+.eyebrow a:hover { text-decoration: underline; }
+.eyebrow a.back { padding-left: 0; text-transform: none; letter-spacing: 0; font-size: 11px; }
+.eyebrow a[aria-current="page"] { background: var(--soft); color: var(--ink); }
+.eyebrow .name { white-space: nowrap; }
+h1 {
+  margin: 3px 0 0; font-size: 25px; line-height: 31px; font-weight: 600; letter-spacing: -.025em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.focus .count { font-size: 13px; color: var(--faint); font-variant-numeric: tabular-nums; }
-.focus .final { flex: none; }
-.focus .line { flex: none; margin-top: 8px; font-size: 18px; max-height: 4.3em; overflow-y: auto; }
-.focus.cut .fbody { opacity: .45; }
-.fbody {
-  flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: minmax(0, 1fr);
-  gap: 20px; margin-top: 14px;
+.head-right { margin-left: auto; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.meta { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.film-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px 0 5px; border-radius: 999px;
+  border: .5px solid var(--line-2); background: var(--soft); font-size: 12px; font-weight: 500;
+  transition: background-color .18s ease, transform .18s ease;
 }
-.stagecol, .sidecol { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
-.view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-.stage {
-  position: relative; flex: 1; min-height: 0; border-radius: 14px; overflow: hidden; background: var(--media);
-  display: grid; place-items: center; color: var(--faint); font-size: 14px;
+.film-btn:hover { background: var(--line); }
+.film-btn:active { transform: scale(.97); }
+.film-btn .ico {
+  display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); color: #fff;
 }
-.stage img, .stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
-.stage.empty { background: var(--fill); }
-.stage img { cursor: zoom-in; }
-.stage .tag {
-  position: absolute; left: 10px; top: 10px; font-size: 13px; font-weight: 600; color: #fff;
-  background: rgba(0, 0, 0, .6); border-radius: 7px; padding: 2px 9px; pointer-events: none;
-}
-.stage .tag.picked { background: var(--accent); }
-.strip { flex: none; display: flex; gap: 8px; overflow-x: auto; padding: 4px; margin: -4px; scrollbar-width: thin; }
-.strip .cand { flex: none; width: 132px; }
-.strip button.cand { cursor: pointer; }
-.strip .cand img { cursor: pointer; }
-.strip .cand.on { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--text); }
-.bar { flex: none; display: flex; align-items: center; gap: 10px; min-height: 26px; font-size: 13px; color: var(--muted); }
-.bar .suggest-note { margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar .spacer { flex: 1; }
-.bar .pickcmd { display: flex; align-items: center; gap: 10px; }
-.bar code { font: 12px ui-monospace, "SF Mono", monospace; color: var(--text); background: var(--fill); border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
-.bar .copy, .sidecol .copy { font-size: 13px; color: var(--accent); white-space: nowrap; }
-.sidecol .frame { flex: none; }
-.sidecol figcaption { align-items: baseline; }
-.sidecol figcaption button { margin-left: auto; }
-.sidecol .voice { margin-top: 0; gap: 10px; }
-.sidecol .voice audio { min-width: 0; width: 100%; flex-basis: 100%; }
-.sidecol .seg { flex: none; }
-.sidecol .seg .web-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: 5px; vertical-align: middle; }
-.sidecol .seg .web-dot.differs { background: var(--orange); }
-.panel { flex: 1; min-height: 0; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 10px; overscroll-behavior: contain; }
-.panel .head { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
-.panel .head .copy { margin-left: auto; }
-.panel .prompt { margin-top: 8px; font-size: 14px; }
-.panel .web-note { margin-top: 8px; }
-.panel .empty { color: var(--faint); font-size: 14px; }
-/* 竖屏：候选条竖着放在大图右边，右栏放宽，视频小窗限高 */
-.portrait .fbody { grid-template-columns: minmax(0, 1fr) minmax(320px, 40%); }
-.portrait .view { flex-direction: row; }
-.portrait .strip { flex-direction: column; overflow-x: hidden; overflow-y: auto; width: 92px; }
-.portrait .strip .cand { width: 100%; }
-.portrait .sidecol .frame { max-height: 36vh; aspect-ratio: auto; height: 36vh; }
-.focus .fbody.one { grid-template-columns: minmax(0, 1fr); }
-.single .keys .k-list, .keys .k-single { display: none; }
-.single .keys .k-single { display: inline; }
+.film-btn .ico svg { width: 8px; height: 8px; margin-left: 1px; }
+.film-btn .dur { color: var(--ink-3); font-size: 10px; font-variant-numeric: tabular-nums; }
+svg { fill: currentColor; display: block; }
 
-/* 看大图 */
-.box {
-  position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .86); display: grid; place-items: center;
-  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); cursor: zoom-out;
+/* 主体：概览条、筛选，下面三栏 */
+.body { flex: 1 1 auto; min-height: 0; padding-bottom: 12px; }
+.main {
+  height: 100%; display: grid; gap: 12px;
+  grid-template-columns: 220px minmax(0, 1fr) 340px; grid-template-rows: auto auto minmax(0, 1fr);
 }
-.box img { max-width: 94vw; max-height: 88vh; border-radius: 10px; }
-.box p { position: fixed; bottom: 18px; left: 0; right: 0; text-align: center; color: #f5f5f7; font-size: 14px; margin: 0; }
+.overview {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-radius: 16px;
+  background: var(--soft);
+}
+.ov-main { display: flex; align-items: baseline; gap: 6px; flex: none; }
+.pct { font-size: 34px; line-height: 36px; font-weight: 600; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.pct i { font-style: normal; font-size: 18px; font-weight: 500; color: var(--ink-3); margin-left: 1px; }
+.track { flex: 1 1 auto; min-width: 70px; height: 4px; border-radius: 999px; overflow: hidden; background: var(--line); }
+.track > i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.ov-stats { display: flex; align-items: center; gap: 18px; flex: none; }
+.stat b { display: block; margin-top: 1px; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; }
+.stat b.warn { color: var(--warn); }
+.chapters { flex: none; display: flex; gap: 10px; font-size: 11px; line-height: 16px; color: var(--ink-3); white-space: nowrap; }
+.chapters span.done { color: var(--ink-2); }
+.chapters span.done::before { content: "✓"; margin-right: 4px; color: var(--ok); font-weight: 600; }
+.chapters span.now { color: var(--ink); font-weight: 500; }
+.chapters span.now::before {
+  content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%;
+  background: var(--accent); vertical-align: 1px;
+}
 
-/* 窄屏：侧栏收成吸顶的两行，第二行是横向滚动的镜头导航 */
-@media (max-width: 1000px) {
-  html { scroll-padding-top: 112px; }
-  .layout { display: block; }
-  .side {
-    height: auto; z-index: 10; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
-    gap: 8px 12px; padding: 10px 16px 8px; background: var(--bar); border-bottom: 1px solid var(--line);
-    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
-  }
-  .crumbs { grid-column: 1 / -1; margin: 0; flex-wrap: nowrap; overflow-x: auto; }
-  .head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-  h1 { font-size: 17px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fresh { margin: 0; white-space: nowrap; }
-  .stats { grid-column: 1 / -1; display: flex; gap: 14px; order: 3; }
-  .stat { display: flex; gap: 5px; font-size: 12px; }
-  .meter, .keys { display: none; }
-  .side { grid-template-columns: minmax(0, 1fr) auto auto; }
-  .crumbs, .stats, .nav { grid-column: 1 / -1; }
-  .nav { grid-column: 1 / -1; order: 4; display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px; padding: 0 16px 2px; scrollbar-width: none; }
-  .nav::-webkit-scrollbar { display: none; }
-  .nav a { flex: none; background: var(--fill); border-radius: 980px; padding: 4px 12px 4px 10px; gap: 6px; }
-  .nav a[aria-current="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
-  .nav a .snip { display: none; }
-  main { padding: 16px 16px 72px; }
-  .shot { padding: 20px; border-radius: 18px; }
-  .shot h2 { font-size: 32px; }
+/* 分段控件：白色滑块跟着选中项平移 */
+.seg { position: relative; display: flex; width: 100%; padding: 2px; border-radius: 11px; background: var(--seg); }
+.seg.filters { grid-column: 1 / -1; max-width: 600px; }
+.seg-thumb {
+  position: absolute; top: 2px; bottom: 2px; left: 2px; width: 0; border-radius: 9px; background: var(--seg-item); opacity: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .14), 0 0 0 .5px rgba(0, 0, 0, .05);
+  transition: left .3s cubic-bezier(.32, .72, 0, 1), width .3s cubic-bezier(.32, .72, 0, 1), opacity .2s ease;
 }
-/* 窄屏的单镜视图：顶栏在上，下面这一镜占满剩下的高度，右栏收窄 */
-@media (max-width: 1000px) {
-  .single .layout { display: flex; flex-direction: column; height: 100vh; }
-  .single .side { position: static; flex: none; }
-  .single main { height: auto; flex: 1; min-height: 0; padding: 12px 16px 14px; }
-  .single .focus { padding: 14px 16px 16px; border-radius: 18px; }
-  .single .focus h2 { font-size: 26px; }
-  .single .fbody { grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; }
-  .portrait .single .fbody { grid-template-columns: minmax(0, 1fr) 260px; }
-  .strip .cand { width: 104px; }
+.seg-item {
+  position: relative; z-index: 1; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center;
+  gap: 5px; height: 28px; padding: 0 6px; border-radius: 9px; color: var(--ink-2); font-size: 12px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; transition: color .2s ease;
 }
-@media (max-width: 640px) {
-  .media { grid-template-columns: 1fr; }
-  .eyebrow { display: none; }
-  #views { display: none; }
+.seg-item:hover, .seg-item[aria-pressed="true"] { color: var(--ink); }
+.seg-item i { font-style: normal; font-size: 10px; line-height: 14px; color: var(--ink-3); }
+.web-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.web-dot.differs { background: var(--warn-dot); }
+
+/* 左栏：镜头列表，自己纵向滚动 */
+.shots { min-height: 0; overflow: hidden; }
+.rail {
+  display: flex; flex-direction: column; gap: 2px; height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--line-2) transparent;
+}
+.rail-empty { padding: 16px 6px; color: var(--ink-3); font-size: 12px; }
+.shot {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 7px; border-radius: 10px; text-align: left;
+  transition: background-color .18s ease;
+}
+.shot:hover { background: var(--soft); }
+.shot[aria-current="true"] { background: var(--accent-soft); }
+.shot.cut { opacity: .5; }
+.thumb { position: relative; flex: 0 0 56px; width: 56px; height: 32px; overflow: hidden; border-radius: 8px; background: var(--soft); }
+.thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thumb .dot {
+  position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.dot.ok { background: var(--ok-dot); }
+.dot.warn { background: var(--warn-dot); }
+.dot.bad { background: var(--bad); }
+.dot.run { background: var(--accent); }
+.thumb .has-video {
+  position: absolute; left: 3px; bottom: 3px; width: 12px; height: 12px; border-radius: 50%; background: rgba(0, 0, 0, .5);
+  display: flex; align-items: center; justify-content: center;
+}
+.thumb .has-video::before {
+  content: ""; margin-left: 1px; border-left: 4px solid #fff; border-top: 3px solid transparent; border-bottom: 3px solid transparent;
+}
+.shot-cap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.shot-line { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.shot-key { flex: none; font-size: 12px; line-height: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.shot-name { flex: 1 1 auto; min-width: 0; font-size: 12px; line-height: 16px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shot-meta { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--ink-3); font-size: 10px; line-height: 14px; white-space: nowrap; overflow: hidden; }
+.mode { padding: 0 4px; border-radius: 4px; background: var(--line); color: var(--ink-2); font-size: 9px; line-height: 14px; font-weight: 600; }
+.mode.pair { background: var(--accent-2-soft); color: var(--accent-2); }
+.shot-meta .warn { color: var(--warn); font-weight: 600; }
+.shot-meta .bad { color: var(--bad); font-weight: 600; }
+
+/* 中栏：这一镜的画面、规格、提醒和候选 */
+.detail, .info {
+  min-width: 0; min-height: 0; overflow: hidden; border-radius: 18px; background: var(--surface);
+  box-shadow: var(--shadow), 0 0 0 .5px var(--line);
+}
+.detail { display: flex; flex-direction: column; padding: 14px; }
+.dhead { flex: none; display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.dhead-main { flex: 1 1 auto; min-width: 0; }
+.dhead-side { display: flex; align-items: center; gap: 6px; flex: none; }
+.cap .pair { color: var(--accent-2); }
+.dtitle {
+  margin: 2px 0 0; font-size: 19px; line-height: 24px; font-weight: 600; letter-spacing: -.02em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dtitle.none { color: var(--ink-3); font-weight: 500; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; height: 21px; padding: 0 8px; border-radius: 999px; white-space: nowrap;
+  font-size: 11px; font-weight: 500; color: var(--ink-3); background: var(--soft);
+}
+.badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.badge.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.badge.warn { color: var(--warn); background: var(--warn-bg); }
+.badge.bad { color: var(--bad); background: var(--bad-bg); }
+.badge.run { color: var(--accent); background: var(--accent-soft); }
+.ref-chip {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px 0 3px; border-radius: 999px;
+  border: .5px solid var(--line-2); background: var(--soft); color: var(--ink-2); font-size: 10px; font-weight: 500;
+}
+.ref-chip:hover { background: var(--line); }
+.ref-stack { display: flex; padding-left: 2px; }
+.ref-stack > * {
+  width: 16px; height: 16px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--bg); margin-left: -5px;
+  background: var(--line-2);
+}
+.ref-stack > :first-child { margin-left: 0; }
+
+.frame {
+  position: relative; flex: 1 1 auto; min-height: 160px; overflow: hidden; border-radius: 12px; background: var(--media);
+  display: flex; align-items: center; justify-content: center;
+}
+.frame > img, .frame > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.frame > img { cursor: zoom-in; }
+.frame-empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  background: var(--soft); color: var(--ink-2); font-size: 12px; text-align: center; padding: 12px;
+}
+.frame-empty .sub { color: var(--ink-3); font-size: 11px; }
+.pairs {
+  position: absolute; inset: 0; padding: 40px 14px 14px; display: grid; gap: 10px; align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-rows: 100%;
+}
+.pair-item { min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.pair-item img, .pair-item .missing {
+  display: block; max-width: 100%; max-height: calc(100% - 20px); aspect-ratio: var(--ar); object-fit: contain;
+  border: 1.5px solid var(--accent); border-radius: 10px; cursor: zoom-in; background: #000;
+}
+.pair-item.end img, .pair-item.end .missing { border-color: var(--accent-2); }
+.pair-item .missing { width: 100%; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, .6); cursor: default; font-size: 12px; }
+.pair-cap { display: flex; align-items: center; gap: 4px; margin-top: 4px; color: rgba(255, 255, 255, .75); font-size: 10px; line-height: 14px; }
+.pair-arrow { color: rgba(255, 255, 255, .55); font-size: 12px; }
+.kf-tag { padding: 0 4px; border-radius: 4px; font-size: 9px; line-height: 14px; font-weight: 600; color: #fff; background: var(--accent); }
+.kf-tag.end { background: var(--accent-2); }
+.glass {
+  position: absolute; z-index: 4; border-radius: 9px; background: rgba(20, 20, 22, .52);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+.media-mode { top: 8px; left: 8px; height: 24px; padding: 0 8px; display: inline-flex; align-items: center; border-radius: 7px; color: rgba(255, 255, 255, .86); font-size: 10px; font-weight: 500; pointer-events: none; }
+.media-switch { top: 8px; right: 8px; display: inline-flex; gap: 2px; padding: 2px; }
+.media-switch button { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 7px; color: rgba(255, 255, 255, .8); font-size: 11px; }
+.media-switch button[aria-pressed="true"] { background: rgba(255, 255, 255, .92); color: #1d1d1f; }
+.media-switch button:disabled { opacity: .4; cursor: default; }
+.play-badge {
+  position: absolute; right: 10px; bottom: 10px; z-index: 3; width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, .92); color: #1d1d1f;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .3); transition: transform .2s ease;
+}
+.play-badge:hover { transform: scale(1.06); }
+.play-badge svg { width: 13px; height: 13px; margin-left: 2px; }
+
+.specs { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 10px; padding-top: 8px; border-top: .5px solid var(--line); }
+.spec { min-width: 0; padding-right: 12px; }
+.spec + .spec { padding-left: 12px; border-left: .5px solid var(--line); }
+.spec b { display: block; margin-top: 2px; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spec b.idle { color: var(--ink-3); font-weight: 500; }
+.spec b.warn { color: var(--warn); }
+.spec b.bad { color: var(--bad); }
+.spec b.run { color: var(--accent); }
+.spec .s { display: block; margin-top: 1px; color: var(--ink-2); font-size: 10px; line-height: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.alerts { flex: none; display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 96px; overflow-y: auto; }
+.alert { display: flex; align-items: flex-start; gap: 9px; padding: 7px 10px; border-radius: 12px; font-size: 11px; line-height: 16px; background: var(--soft); color: var(--ink-2); text-align: left; }
+.alert.warn { background: var(--warn-bg); color: var(--warn); }
+.alert.bad { background: var(--bad-bg); color: var(--bad); }
+.alert .glyph {
+  flex: 0 0 15px; width: 15px; height: 15px; margin-top: 1px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: currentColor; font-size: 9px; line-height: 1; font-weight: 700;
+}
+.alert .glyph::after { content: attr(data-g); color: var(--bg); }
+.alert strong { font-weight: 600; }
+.alert span.t { opacity: .85; }
+button.alert:hover { filter: brightness(.97); }
+
+.cands-head { flex: none; display: flex; align-items: baseline; gap: 8px; margin: 10px 0 6px; }
+.cands-head .pick { margin-left: auto; color: var(--ink-2); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.strip { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 2px; margin: -2px; scrollbar-width: none; }
+.strip::-webkit-scrollbar { height: 0; }
+.cand {
+  position: relative; flex: none; height: 58px; aspect-ratio: var(--ar); overflow: hidden; border: 2px solid transparent;
+  border-radius: 10px; background: var(--soft); transition: transform .16s ease;
+  display: flex; align-items: center; justify-content: center; color: var(--ink-3); font-size: 10px;
+}
+button.cand:hover { transform: translateY(-1px); }
+.cand img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cand.picked { border-color: var(--accent); }
+.cand.last { border-color: var(--accent-2); }
+.cand.suggested { border-color: var(--warn-dot); }
+.cand.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--ink); }
+.cand .a { position: absolute; left: 5px; bottom: 2px; color: #fff; font-size: 10px; line-height: 12px; font-weight: 600; text-shadow: 0 1px 3px rgba(0, 0, 0, .7); }
+.cand .m { position: absolute; top: 3px; right: 3px; padding: 0 4px; border-radius: 5px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 9px; line-height: 13px; }
+.cand.picked .m { background: var(--accent); }
+.cand.last .m { background: var(--accent-2); }
+.cand.suggested .m { background: var(--warn-dot); color: #1d1d1f; }
+.empty-cands { flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px; border-radius: 12px; background: var(--soft); color: var(--ink-2); font-size: 12px; }
+.empty-cands .sub { color: var(--ink-3); font-size: 11px; }
+.detail.cut .frame, .detail.cut .strip { opacity: .5; }
+
+/* 右栏：提示词、台词与旁白、检查 */
+.info { display: flex; flex-direction: column; padding: 8px 16px 12px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.block { padding: 8px 0; }
+.block + .block { border-top: .5px solid var(--line); }
+.block > .cap { margin-bottom: 5px; }
+.prompts { display: flex; flex-direction: column; gap: 4px; }
+.prow {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px; align-items: start; width: 100%;
+  padding: 4px 4px 4px 0; border-radius: 7px; text-align: left; transition: background-color .16s ease;
+}
+.prow:hover { background: var(--soft); }
+.prow .k { display: flex; align-items: center; gap: 4px; color: var(--ink-3); font-size: 10px; line-height: 16px; font-weight: 600; padding-top: 1px; }
+.prow .txt { font-size: 11px; line-height: 16px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; max-height: 48px; overflow: hidden; overflow-wrap: anywhere; }
+.prow .more { color: var(--accent); font-size: 10px; line-height: 16px; font-weight: 500; white-space: nowrap; padding-top: 1px; }
+.muted { color: var(--ink-3); font-size: 11px; }
+.quote { margin: 0; font-size: 13px; line-height: 20px; letter-spacing: -.005em; }
+.quote.none { color: var(--ink-3); }
+.audio { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.audio-play {
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+}
+.audio-play svg { width: 11px; height: 11px; }
+.audio-track { flex: 1 1 auto; height: 16px; display: flex; align-items: center; cursor: pointer; }
+.audio-track > span { position: relative; display: block; width: 100%; height: 3px; border-radius: 2px; background: var(--line-2); overflow: hidden; }
+.audio-track i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); border-radius: 2px; }
+.audio-time { flex: none; color: var(--ink-2); font-size: 10px; line-height: 14px; font-variant-numeric: tabular-nums; }
+.audio-empty { margin-top: 8px; padding: 8px 12px; border-radius: 10px; background: var(--soft); color: var(--ink-2); font-size: 11px; }
+.checks { display: flex; flex-direction: column; }
+.check { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; border-bottom: .5px solid var(--line); font-size: 11px; line-height: 16px; }
+.check:last-child { border-bottom: 0; }
+.check .k { color: var(--ink-2); flex: none; }
+.check .n { flex: 1 1 auto; min-width: 0; color: var(--ink-3); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.check .v { flex: none; font-weight: 500; }
+.v.ok { color: var(--ok); }
+.v.warn { color: var(--warn); }
+.v.bad { color: var(--bad); }
+.v.run { color: var(--accent); }
+.v.idle { color: var(--ink-3); font-weight: 400; }
+.info-foot { margin-top: auto; padding-top: 8px; border-top: .5px solid var(--line); color: var(--ink-3); font-size: 10px; line-height: 14px; }
+
+/* 底栏 */
+.foot { flex: none; display: flex; align-items: center; gap: 6px; min-height: 34px; padding-top: 8px; padding-bottom: 8px; border-top: .5px solid var(--line); color: var(--ink-3); font-size: 11px; line-height: 16px; }
+.ro { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); }
+.ro::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.grow { flex: 1 1 auto; }
+.foot .fresh button { background: var(--accent); color: #fff; padding: 2px 10px; border-radius: 999px; font-size: 11px; }
+.foot .note { color: var(--warn); }
+kbd { font: 10px ui-monospace, "SF Mono", monospace; background: var(--soft); border: .5px solid var(--line-2); border-radius: 4px; padding: 0 4px; }
+
+/* 浮层：提示词全文、参考图、候选大图、成片。共用一个遮罩，只有浮层正文会滚动 */
+.modal-host { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; padding: 16px; }
+.modal-host.open {
+  display: flex; background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  animation: fade .2s ease;
+}
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pop { from { opacity: 0; transform: scale(.97) translateY(6px) } to { opacity: 1; transform: none } }
+.modal {
+  width: min(640px, 100%); max-height: 90vh; display: flex; flex-direction: column; padding: 18px; border-radius: 22px;
+  background: var(--bg); color: var(--ink); box-shadow: 0 30px 90px rgba(0, 0, 0, .42), 0 0 0 .5px var(--line);
+  animation: pop .24s cubic-bezier(.2, .7, .2, 1);
+}
+.modal.wide { width: min(980px, 100%); padding: 16px; }
+.modal-head { flex: none; display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.modal-title { margin: 3px 0 0; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.close {
+  margin-left: auto; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%; background: var(--soft); color: var(--ink-2);
+  font-size: 17px; line-height: 1;
+}
+.close:hover { background: var(--line); color: var(--ink); }
+.modal .seg { flex: none; max-width: 360px; margin-bottom: 12px; }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; }
+.prompt { margin: 0; font-size: 13px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prompt .common { color: var(--ink-3); }
+.prompt-note { margin: 8px 0 0; font-size: 12px; color: var(--warn); }
+.web-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; font-size: 12px; line-height: 18px; background: var(--accent-soft); }
+.web-note.differs { background: var(--warn-bg); color: var(--warn); }
+.modal-foot {
+  flex: none; display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: .5px solid var(--line);
+  color: var(--ink-3); font-size: 11px; line-height: 16px; flex-wrap: wrap;
+}
+.copy { color: var(--accent); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.cmd { display: inline-flex; align-items: center; gap: 8px; }
+.cmd code { font: 11px ui-monospace, "SF Mono", monospace; color: var(--ink); background: var(--soft); border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
+.ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.ref-card { min-width: 0; padding: 8px; border-radius: 12px; background: var(--soft); }
+.ref-card .pic { display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: var(--ar); border-radius: 8px; background: var(--media); color: rgba(255, 255, 255, .55); font-size: 11px; overflow: hidden; }
+.ref-card .pic img { width: 100%; height: 100%; object-fit: contain; }
+.ref-name { margin-top: 6px; font-size: 12px; line-height: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-meta { display: flex; align-items: center; gap: 5px; margin-top: 3px; color: var(--ink-3); font-size: 10px; line-height: 14px; }
+.tag { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 5px; background: var(--line); color: var(--ink-2); font-size: 10px; font-weight: 600; white-space: nowrap; }
+.tag.start { background: var(--accent-soft); color: var(--accent); }
+.tag.end { background: var(--accent-2-soft); color: var(--accent-2); }
+.tag.suggested { background: var(--warn-bg); color: var(--warn); }
+.stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; border-radius: 14px; background: #05070a; display: flex; justify-content: center; }
+.stage img, .stage video { display: block; max-width: 100%; max-height: 66vh; object-fit: contain; }
+.stage video { width: 100%; }
+.nav-btn {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 3; width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, .9); color: #1d1d1f; font-size: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .3);
+}
+.nav-btn:disabled { opacity: .25; cursor: default; }
+.nav-btn.prev { left: 12px; }
+.nav-btn.next { right: 12px; }
+.lb-meta { flex: none; display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.lb-meta .note { color: var(--ink-2); font-size: 12px; }
+.lb-thumbs { flex: none; display: flex; gap: 6px; margin-top: 10px; padding: 10px 2px 2px; border-top: .5px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.lb-thumbs .cand { height: 40px; border-radius: 7px; }
+
+/* 窄窗口：一栏往下排，整页滚动，镜头列表横着滑 */
+@media (max-width: 899px) {
+  body { overflow: auto; }
+  .app { height: auto; min-height: 100vh; }
+  .wrap { padding-left: 14px; padding-right: 14px; }
+  .top { flex-direction: column; align-items: stretch; gap: 3px; }
+  .head-right { margin-left: 0; justify-content: space-between; }
+  .main { height: auto; display: flex; flex-direction: column; gap: 10px; }
+  .overview { flex-wrap: wrap; gap: 8px 12px; }
+  .track { order: 2; flex: 1 1 100%; }
+  .ov-stats { order: 3; width: 100%; justify-content: space-between; gap: 12px; }
+  .chapters { order: 4; flex-wrap: wrap; gap: 3px 10px; white-space: normal; }
+  .seg.filters { max-width: none; }
+  .shots { overflow: visible; }
+  .rail { flex-direction: row; height: auto; gap: 10px; overflow-x: auto; overflow-y: hidden; padding: 2px 0 4px; scrollbar-width: none; }
+  .shot { flex: 0 0 112px; width: 112px; min-width: 0; flex-direction: column; align-items: stretch; gap: 5px; padding: 0; }
+  .shot[aria-current="true"] { background: transparent; }
+  .shot[aria-current="true"] .thumb { box-shadow: 0 0 0 2px var(--accent); }
+  .shot[aria-current="true"] .shot-key { color: var(--accent); }
+  .thumb { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 11px; }
+  .shot-meta { display: none; }
+  .frame { flex: none; aspect-ratio: var(--ar); max-height: 70vh; min-height: 0; }
+  .alerts { max-height: none; }
+  .info { overflow: visible; }
+  .keys { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  * { transition: none !important; }
+  *, *::before { animation: none !important; transition: none !important; }
 }
 </style>
 </head>
 <body>
-<div class="layout">
-  <aside class="side">
-    <div class="crumbs hidden" id="crumbs"></div>
-    <div class="head" id="head"></div>
-    <div class="seg" id="views">
-      <button data-view="single" aria-pressed="true">单镜</button>
-      <button data-view="list" aria-pressed="false">列表</button>
+<div class="app">
+  <header class="top wrap" id="top"></header>
+  <div class="body wrap">
+    <div class="main">
+      <section class="overview" id="overview"></section>
+      <nav class="seg filters" id="filters" aria-label="镜头筛选"></nav>
+      <div class="shots"><div class="rail" id="rail"></div></div>
+      <article class="detail" id="detail"></article>
+      <aside class="info" id="info"></aside>
     </div>
-    <div class="seg" id="filter">
-      <button data-filter="all" aria-pressed="true">全部</button>
-      <button data-filter="open" aria-pressed="false">未完成</button>
-    </div>
-    <div class="stats" id="stats"></div>
-    <nav class="nav" id="nav"></nav>
-    <div class="keys">
-      <span class="k-list"><kbd>J</kbd> <kbd>K</kbd> 上下一镜</span>
-      <span class="k-single"><kbd>J</kbd> <kbd>K</kbd> 上下一镜　<kbd>←</kbd> <kbd>→</kbd> 换候选<br>
-        <kbd>空格</kbd> 对比选用图　<kbd>V</kbd> 大图放视频</span>
-    </div>
-  </aside>
-  <main id="shots"><div id="focus"></div><div id="list"></div></main>
+  </div>
+  <footer class="foot wrap" id="foot"></footer>
 </div>
+<div class="modal-host" id="modal"></div>
 <script id="data" type="application/json">__WRALLY_DATA__</script>
 <script>
 (() => {
   const VERSION = "__WRALLY_VERSION__";
   const data = JSON.parse(document.getElementById("data").textContent);
   const KINDS = [["keyframe", "关键帧"], ["video", "视频"], ["audio", "旁白"]];
-  const PROMPTS = [["image", "图片提示词"], ["anim", "动画提示词"], ["audio", "旁白提示词"]];
+  const PROMPTS = [["image", "图片", "图片提示词"], ["anim", "动画", "动画提示词"], ["audio", "旁白", "旁白提示词"]];
   const SETTLED = ["done", "skipped"];
+  const BAD = ["failed", "stale", "missing"];
+  // 状态 → 颜色：ok 绿、warn 橙、bad 红、run 蓝、idle 灰
+  const TONE = { done: "ok", skipped: "ok", pending: "warn", stale: "warn", missing: "warn", failed: "bad", running: "run", none: "idle", cut: "idle" };
 
   // 所有文字都经 textContent 写入，提示词里的任何字符都不会被当成标签
   function el(tag, attrs, ...children) {
@@ -343,141 +468,51 @@ body.single { overflow: hidden; }
     for (const child of children.flat()) if (child) node.append(child);
     return node;
   }
+  // 换掉 node 的全部子节点；null、false 这些空位跳过（replaceChildren 会把它们写成文字）
+  const put = (node, ...children) => node.replaceChildren(...children.flat().filter(Boolean));
+  const PATHS = { play: "M4.2 2.1 13.6 8l-9.4 5.9z", pause: "M3.4 2.4h3.2v11.2H3.4zM9.4 2.4h3.2v11.2H9.4z" };
+  function icon(name) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", PATHS[name]);
+    svg.append(path);
+    return svg;
+  }
+  const fmt = t => { const v = Math.max(0, Math.floor(t || 0)); return Math.floor(v / 60) + ":" + String(v % 60).padStart(2, "0"); };
 
   const stateOf = (shot, kind) => shot[kind].status.state;
   const webDiffers = shot => Object.values(shot.prompts).some(p => p && p.web === "differs");
   const isOpen = shot => !shot.cut
     && (webDiffers(shot) || KINDS.some(([kind]) => !SETTLED.includes(stateOf(shot, kind))));
+  const needsWork = shot => !shot.cut && (webDiffers(shot) || KINDS.some(([kind]) => BAD.includes(stateOf(shot, kind))));
+  const hasState = state => shot => !shot.cut && KINDS.some(([kind]) => stateOf(shot, kind) === state);
+  const isPair = shot => Boolean(shot.keyframe.last);
   function worst(shot) {
     if (shot.cut) return "cut";
     const states = KINDS.map(([kind]) => stateOf(shot, kind));
     for (const s of ["failed", "stale", "missing", "running", "pending", "none"]) if (states.includes(s)) return s;
     return webDiffers(shot) ? "stale" : "done";
   }
-
-  // 侧栏
-  document.title = [data.name.toUpperCase(), data.title].filter(Boolean).join(" · ");
-  const fresh = el("div", { class: "fresh" });
-  document.getElementById("head").append(
-    el("div", { class: "eyebrow", text: data.name }), el("h1", { text: data.title || data.name }), fresh);
-  document.getElementById("stats").append(...KINDS.map(([kind, label]) => {
-    const wanted = data.shots.filter(s => !s.cut && stateOf(s, kind) !== "skipped");
-    const done = wanted.filter(s => stateOf(s, kind) === "done").length;
-    return el("div", { class: "stat" },
-      el("span", { class: "what", text: label }),
-      el("span", { class: "num" }, String(done), el("small", { text: " / " + wanted.length })),
-      el("div", { class: "meter" }, el("i", { style: `width:${wanted.length ? done / wanted.length * 100 : 0}%` })));
-  }));
-  if (data.index) {
-    const crumbs = document.getElementById("crumbs");
-    crumbs.classList.remove("hidden");
-    crumbs.append(el("a", { class: "back", href: data.index, text: "‹ 全部剧集" }),
-      ...data.episodes.map(name => el("a", { href: `../${encodeURIComponent(name)}/page.html`, text: name,
-        "aria-current": name === data.name ? "page" : null })));
+  function badge(shot) {
+    const w = worst(shot);
+    if (w === "cut") return ["不进成片", "idle"];
+    if (w === "done") return ["完成", "ok"];
+    if (w === "stale" && KINDS.every(([kind]) => SETTLED.includes(stateOf(shot, kind)))) return ["网页副本不同", "warn"];
+    const [kind, label] = KINDS.find(([k]) => stateOf(shot, k) === w);
+    return [`${label}${shot[kind].status.label}`, TONE[w]];
   }
-  const nav = document.getElementById("nav");
-  const link = (id, dot, label, snip) => el("a", { href: "#" + id, "data-for": id },
-    el("span", { class: "dot " + dot }), el("b", { text: label }), el("span", { class: "snip", text: snip }));
-  if (data.film) nav.append(link("film", "film", "成片", ""));
-  nav.append(...data.shots.map(s => link("s" + s.key, worst(s), s.key, s.narration)));
-
-  // 看大图：group 是同一镜的若干张，左右键切换
-  let box = null;
-  function show(group, index) {
-    close();
-    const item = group[index];
-    box = el("div", { class: "box", onclick: close }, el("img", { src: item.src }), el("p", { text: item.caption }));
-    box.step = d => show(group, (index + d + group.length) % group.length);
-    document.body.append(box);
+  // 画面位置放哪张：选用图；没选时放推荐的那张
+  function cover(shot) {
+    const kf = shot.keyframe;
+    if (kf.src) return kf.src;
+    const hinted = kf.candidates.find(c => c.suggested && c.src);
+    return !kf.pick && hinted ? hinted.src : null;
   }
-  function close() { if (box) { box.remove(); box = null; } }
+  const live = data.shots.filter(s => !s.cut);  // 不进成片的镜头不算进度
 
-  function copyButton(text, label) {
-    const button = el("button", { class: "copy", text: label, onclick: e => {
-      e.preventDefault();
-      navigator.clipboard && navigator.clipboard.writeText(text).then(() => {
-        button.textContent = "已复制";
-        setTimeout(() => { button.textContent = label; }, 1500);
-      });
-    } });
-    return button;
-  }
-
-  // 一段提示词的各个部分，列表里装进 details，单镜视图里放进标签页
-  function promptParts(shot, kind, label) {
-    const p = shot.prompts[kind];
-    if (!p) return null;
-    const hint = p.raw ? "整段自己写" : (p.before || p.after ? "灰色是公共文本" : "");
-    // 在网页上编辑过的提示词：远端另存着一份副本，生成用的是它，push 改不到它
-    const what = kind === "image" ? "生图" : "生视频";
-    const web = p.web && el("span", { class: "web " + p.web, text: p.web === "differs" ? "网页副本不同" : "需在网页上改" });
-    const webNote = p.web && el("p", { class: "web-note " + p.web, text: p.web === "differs"
-      ? `这一镜的${label}在 WorkRally 网页上编辑过，网页另存的那份和这里不一样。${what}用的是网页那份，push 改不到它：` +
-        "请先刷新网页，再把这里的全文粘贴进去保存。改好之前，对应的生成命令会报 stale_web_prompt 中止。"
-      : `这一镜的${label}在 WorkRally 网页上编辑过，网页另存着一份副本（目前和这里一致）。${what}用的是那份，push 改不到它：` +
-        "以后改这段提示词，除了 push，还要到网页上粘贴成同样的文字。" });
-    return { web, hint, copy: copyButton(p.before + p.own + p.after, "复制全文"), body: [
-      webNote,
-      el("p", { class: "prompt" },
-        p.before && el("span", { class: "common", text: p.before }),
-        el("span", { text: p.own }),
-        p.after && el("span", { class: "common", text: p.after })),
-      p.note && el("p", { class: "prompt-note", text: "拼接失败：" + p.note })] };
-  }
-
-  function promptBlock(shot, kind, label) {
-    const parts = promptParts(shot, kind, label);
-    if (!parts) return null;
-    return el("details", { id: `d-${shot.key}-${kind}` },
-      el("summary", null, label, parts.web, el("small", { text: parts.hint }), parts.copy),
-      parts.body);
-  }
-
-  // 卡片顶上的提醒：这一镜有提示词要到网页上改。两份不一致的排在前面说
-  function webPill(shot) {
-    const kinds = PROMPTS.filter(([kind]) => shot.prompts[kind] && shot.prompts[kind].web);
-    if (!kinds.length) return null;
-    const differs = kinds.filter(([kind]) => shot.prompts[kind].web === "differs");
-    const names = (differs.length ? differs : kinds).map(([, label]) => label.replace("提示词", "")).join("、");
-    return el("span", { class: "pill web-pill" + (differs.length ? " differs" : ""),
-      text: differs.length ? `网页副本不同 · ${names}` : `网页上改过 · ${names}` });
-  }
-
-  function pills(shot) {
-    return el("div", { class: "pills" }, webPill(shot), KINDS.map(([kind, label]) => {
-      const st = shot[kind].status;
-      return el("span", { class: "pill " + st.state, title: st.note || null, text: `${label} · ${st.label}` });
-    }));
-  }
-
-  // 成片和清单对不上的地方：这一镜删了，或者成片用的是另做的视频
-  function finalNote(shot) {
-    return shot.cut
-      ? el("p", { class: "final" }, el("b", { text: "不进成片" }), "：素材留着，合成时跳过这一镜。")
-      : shot.replaced
-        ? el("p", { class: "final" }, el("b", { text: "成片用另做的视频" }), `：${shot.replaced}。`
-          + "关键帧、候选和提示词是清单里的，不一定是这条视频用的。")
-        : null;
-  }
-
-  function voiceRow(shot) {
-    return el("div", { class: "voice" },
-      el("span", { class: "tag", text: "旁白" }),
-      shot.audio.src ? el("audio", { src: shot.audio.src, controls: true, preload: "none" })
-        : el("span", { class: "empty", text: shot.audio.status.label }),
-      shot.audio.f0 !== null && el("span", { class: "tag", text: `音高 ${shot.audio.f0} Hz` }),
-      shot.audio.status.note && el("span", { class: "tag", text: shot.audio.status.note }));
-  }
-
-  // 只滚动 box 自己，把 item 露出来。scrollIntoView 会连带整页一起滚
-  function revealIn(box, item) {
-    if (!item) return;
-    const b = box.getBoundingClientRect(), r = item.getBoundingClientRect();
-    box.scrollLeft += r.left < b.left ? r.left - b.left : r.right > b.right ? r.right - b.right : 0;
-    box.scrollTop += r.top < b.top ? r.top - b.top : r.bottom > b.bottom ? r.bottom - b.bottom : 0;
-  }
-
-  // 画面比例：取载入的图或视频的实际宽高，竖屏的片子换一套布局
+  // 画面比例：取载入的图或视频的实际宽高
   let shape = null;
   function setShape(value) {
     if (!value || value === shape) return;
@@ -491,235 +526,477 @@ body.single { overflow: hidden; }
     if (w && h) setShape(String(Math.round(w / h * 1000) / 1000));
   }
 
-  function card(shot) {
+  // 只滚动 box 自己，把 item 露出来。scrollIntoView 会连带整页一起滚
+  function revealIn(box, item) {
+    if (!item) return;
+    const b = box.getBoundingClientRect(), r = item.getBoundingClientRect();
+    box.scrollLeft += r.left < b.left ? r.left - b.left : r.right > b.right ? r.right - b.right : 0;
+    box.scrollTop += r.top < b.top ? r.top - b.top : r.bottom > b.bottom ? r.bottom - b.bottom : 0;
+  }
+
+  function copyButton(text, label) {
+    const button = el("button", { class: "copy", text: label, onclick: e => {
+      e.stopPropagation();
+      navigator.clipboard && navigator.clipboard.writeText(text).then(() => {
+        button.textContent = "已复制";
+        setTimeout(() => { button.textContent = label; }, 1500);
+      });
+    } });
+    return button;
+  }
+  const command = (text, label) => el("span", { class: "cmd" }, el("code", { title: "在单集目录下运行", text }), copyButton(text, label));
+
+  // 分段控件：滑块挪到选中的那一项下面
+  function syncSegs() {
+    for (const seg of document.querySelectorAll(".seg")) {
+      const thumb = seg.querySelector(".seg-thumb"), item = seg.querySelector('.seg-item[aria-pressed="true"]');
+      if (!thumb) continue;
+      thumb.style.opacity = item ? "1" : "0";
+      if (item) { thumb.style.left = item.offsetLeft + "px"; thumb.style.width = item.offsetWidth + "px"; }
+    }
+  }
+  function segment(items, chosen, onpick) {
+    return [el("span", { class: "seg-thumb", "aria-hidden": "true" }), ...items.map(([value, ...label]) =>
+      el("button", { class: "seg-item", "data-value": value, "aria-pressed": String(value === chosen),
+        onclick: () => onpick(value) }, ...label))];
+  }
+  function pressSeg(seg, value) {
+    for (const b of seg.querySelectorAll(".seg-item")) b.setAttribute("aria-pressed", String(b.dataset.value === value));
+    syncSegs();
+  }
+
+  // ---- 头部 -------------------------------------------------------------------
+  document.title = [data.name.toUpperCase(), data.title].filter(Boolean).join(" · ");
+  const counts = Object.fromEntries(KINDS.map(([kind]) => {
+    const wanted = live.filter(s => stateOf(s, kind) !== "skipped");
+    return [kind, [wanted.filter(s => stateOf(s, kind) === "done").length, wanted.length]];
+  }));
+  const filmButton = data.film && el("button", { class: "film-btn", title: "播放整集成片", onclick: () => openFilm() },
+    el("span", { class: "ico" }, icon("play")), el("span", { text: "播放成片" }), el("span", { class: "dur" }));
+  if (filmButton) {
+    const probe = el("video", { src: data.film, preload: "metadata", muted: true });
+    probe.addEventListener("loadedmetadata", () => { filmButton.querySelector(".dur").textContent = fmt(probe.duration); });
+  }
+  document.getElementById("top").append(
+    el("div", { class: "head-text" },
+      el("div", { class: "eyebrow cap" },
+        data.index && el("a", { class: "back", href: data.index, text: "‹ 全部剧集" }),
+        data.index ? data.episodes.map(name => el("a", { href: `../${encodeURIComponent(name)}/page.html`, text: name,
+          "aria-current": name === data.name ? "page" : null })) : el("span", { class: "name", text: data.name })),
+      el("h1", { text: data.title || data.name })),
+    el("div", { class: "head-right" },
+      el("p", { class: "meta", text: [`${live.length} 镜`, ...KINDS.map(([k, l]) => `${l} ${counts[k].join("/")}`)].join(" · ") }),
+      filmButton));
+
+  // ---- 概览条：整体进度、当前阶段、要处理的镜头、生成方式、各阶段 -----------------
+  (() => {
+    let done = 0, total = 0;
+    for (const [kind] of KINDS) { done += counts[kind][0]; total += counts[kind][1]; }
+    const pct = total ? Math.round(done / total * 100) : 0;
+    const kfWanted = live.filter(s => stateOf(s, "keyframe") !== "skipped");
+    const need = (s, kind, p) => stateOf(s, kind) === "skipped" || Boolean(s.prompts[p]);
+    const stages = [
+      ["提示词", live.filter(s => need(s, "keyframe", "image") && need(s, "video", "anim")).length, live.length],
+      ["关键帧", kfWanted.filter(s => s.keyframe.candidates.length || s.keyframe.src || s.keyframe.pick).length, kfWanted.length],
+      ["选图", kfWanted.filter(s => ["done", "missing"].includes(stateOf(s, "keyframe"))).length, kfWanted.length],
+      ["视频", ...counts.video], ["旁白", ...counts.audio], ["成片", data.film ? 1 : 0, 1],
+    ];
+    const now = stages.find(([, a, b]) => a < b);
+    const flagged = live.filter(needsWork).length;
+    const pairs = live.filter(isPair).length;
+    document.getElementById("overview").append(
+      el("div", { class: "ov-main" }, el("span", { class: "pct" }, String(pct), el("i", { text: "%" })), el("span", { class: "cap", text: "整体进度" })),
+      el("div", { class: "track", role: "progressbar", "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100 },
+        el("i", { style: `width:${pct}%` })),
+      el("div", { class: "ov-stats" },
+        el("div", { class: "stat" }, el("span", { class: "cap", text: "当前阶段" }), el("b", { text: now ? `${now[0]} ${now[1]}/${now[2]}` : "全部完成" })),
+        el("div", { class: "stat" }, el("span", { class: "cap", text: "需要处理" }),
+          el("b", { class: flagged || data.note ? "warn" : null, text: data.note ? "公共文本读取失败" : flagged ? `${flagged} 镜` : "没有" })),
+        el("div", { class: "stat" }, el("span", { class: "cap", text: "生成方式" }), el("b", { text: `首尾帧 ${pairs} · 单图 ${live.length - pairs}` }))),
+      el("div", { class: "chapters" }, stages.map(([name, a, b]) =>
+        el("span", { class: a >= b ? "done" : now && now[0] === name ? "now" : null, title: `${name} ${a}/${b}`, text: name }))));
+  })();
+
+  // ---- 筛选和镜头列表 ---------------------------------------------------------
+  const FILTERS = [["all", "全部", () => true], ["open", "未完成", isOpen], ["warn", "需处理", needsWork],
+    ["running", "生成中", hasState("running")], ["failed", "失败", hasState("failed")]];
+  const current = { filter: "all", key: null, media: "keyframe" };
+  const shown = () => data.shots.filter((FILTERS.find(([f]) => f === current.filter) || FILTERS[0])[2]);
+  const byKey = new Map(data.shots.map(s => [s.key, s]));
+  const filters = document.getElementById("filters");
+  filters.append(...segment(FILTERS.map(([value, label, test]) => [value, label, el("i", { text: String(data.shots.filter(test).length) })]),
+    current.filter, value => applyFilter(value)));
+
+  const rail = document.getElementById("rail");
+  function railItem(shot) {
     const kf = shot.keyframe;
-    const shown = kf.candidates.filter(c => c.src);
-    const group = shown.map(c => ({ src: c.src,
-      caption: `${shot.key} · 候选 ${c.label}${c.picked ? " · 选用" : ""}${c.suggested ? " · 推荐" : ""}` }));
-    const picked = shown.findIndex(c => c.picked);
-    // 还没选图时，主图位置先放推荐的那张
-    const hinted = shown.findIndex(c => c.suggested);
-    const cover = kf.src || (!kf.pick && hinted >= 0 ? shown[hinted].src : null);
-    const zoom = () => picked >= 0 ? show(group, picked)
-      : kf.src ? show([{ src: kf.src, caption: shot.key + " · 选用关键帧" }], 0) : show(group, hinted);
-    const cands = el("details", { id: `d-${shot.key}-cands`, open: kf.suggest && !kf.pick ? true : null },
-      el("summary", null, "候选关键帧", el("small", { text: `${kf.candidates.length} 张` })),
-      el("div", { class: "cands" }, kf.candidates.map(c => {
-        const at = shown.indexOf(c);
-        return el("div", { class: "cand" + (c.picked ? " picked" : "") + (c.suggested ? " suggested" : "") },
-          // 展开时才把 data-src 换成 src，默认不加载候选原图
-          c.src ? el("img", { "data-src": c.src, alt: "", onclick: () => show(group, at) }) : "未下载",
-          el("span", { text: c.label }),
-          c.suggested ? el("em", { text: "推荐" }) : null);
-      })),
-      kf.suggest ? el("p", { class: "suggest-note", text: `推荐 ${kf.suggest}${kf.suggest_note ? "：" + kf.suggest_note : ""}` }) : null);
-    cands.addEventListener("toggle", () => {
-      if (cands.open) for (const img of cands.querySelectorAll("img[data-src]")) {
-        img.src = img.dataset.src;
-        img.removeAttribute("data-src");
-      }
-    });
-    return el("section", { class: "shot" + (shot.cut ? " cut" : ""), id: "s" + shot.key },
-      el("header", null,
-        el("h2", { text: shot.key }),
-        pills(shot)),
-      finalNote(shot),
-      el("p", { class: "line" + (shot.narration ? "" : " none"), text: shot.narration || "这一镜还没有台词" }),
-      el("div", { class: "media" },
-        el("figure", null,
-          el("div", { class: "frame" },
-            cover ? el("img", { src: cover, alt: "", loading: "lazy", onclick: zoom, onload: orient }) : kf.status.label),
-          el("figcaption", null, el("b", { text: "关键帧" }),
-            kf.pick ? `选用 ${kf.pick} / 共 ${kf.candidates.length} 张`
-              : kf.suggest && cover ? `推荐 ${kf.suggest}（未选）/ 共 ${kf.candidates.length} 张` : kf.status.label)),
-        el("figure", null,
-          el("div", { class: "frame" }, shot.video.src
-            // 没有关键帧当封面时取视频首帧，否则是一块黑
-            // 另做的视频不拿清单里的关键帧当封面，免得看起来像旧画面
-            ? el("video", { src: shot.video.src, poster: shot.replaced ? null : kf.src, controls: true,
-              playsinline: true, preload: kf.src && !shot.replaced ? "none" : "metadata" })
-            : shot.video.status.label),
-          el("figcaption", null, el("b", { text: shot.replaced ? "视频（成片用）" : "视频" }),
-            shot.video.status.note || shot.video.status.label))),
-      voiceRow(shot),
-      kf.candidates.length ? cands : null,
-      PROMPTS.map(([kind, label]) => promptBlock(shot, kind, label)));
+    const thumb = cover(shot) || (kf.candidates.find(c => c.src) || {}).src;
+    const [label, tone] = badge(shot);
+    return el("button", { class: "shot" + (shot.cut ? " cut" : ""), "data-shot": shot.key, "data-open": isOpen(shot) ? "1" : "0",
+      "aria-current": String(shot.key === current.key), title: `${shot.key} · ${label}`, onclick: () => focusShot(shot.key) },
+      el("span", { class: "thumb" }, thumb && el("img", { src: thumb, alt: "", loading: "lazy" }),
+        el("span", { class: "dot " + tone }), shot.video.src && el("span", { class: "has-video" })),
+      el("span", { class: "shot-cap" },
+        el("span", { class: "shot-line" }, el("span", { class: "shot-key", text: shot.key }),
+          el("span", { class: "shot-name", text: shot.narration || "（没有台词）" })),
+        el("span", { class: "shot-meta" }, el("span", { class: "mode" + (isPair(shot) ? " pair" : ""), text: isPair(shot) ? "首尾帧" : "单图" }),
+          tone === "ok" ? el("span", { text: label }) : el("span", { class: tone === "bad" ? "bad" : tone === "warn" ? "warn" : null, text: label }))));
+  }
+  function drawRail() {
+    const list = shown();
+    put(rail, ...(list.length ? list.map(railItem) : [el("div", { class: "rail-empty", text: "这一筛选下没有镜头" })]));
+    revealIn(rail, rail.querySelector('[aria-current="true"]'));
+  }
+  function applyFilter(which) {
+    current.filter = which;
+    pressSeg(filters, which);
+    const list = shown();
+    drawRail();
+    // 当前这镜被筛掉了：换到后面第一个还在的，后面没有就取最后一个
+    if (list.length && !list.some(s => s.key === current.key)) {
+      const at = data.shots.findIndex(s => s.key === current.key);
+      focusShot((list.find(s => data.shots.indexOf(s) > at) || list[list.length - 1]).key);
+    }
   }
 
-  const main = document.getElementById("shots");
-  if (data.note) main.prepend(el("p", { class: "warn", text: "公共文本读取失败：" + data.note }));
-  const list = document.getElementById("list");
-  const focusBox = document.getElementById("focus");
-  const byId = new Map(data.shots.map(s => ["s" + s.key, s]));
-  const entries = [...(data.film ? [{ id: "film", open: true }] : []),
-    ...data.shots.map(s => ({ id: "s" + s.key, open: isOpen(s) }))];
-  const current = { filter: "all" };
-  const shownIds = () => entries.filter(e => current.filter !== "open" || e.open).map(e => e.id);
-  // 筛掉的镜头：往后找第一个还在的，后面没有就取最后一个
-  function nearest(id) {
-    const ids = shownIds();
-    if (ids.includes(id)) return id;
-    const at = entries.findIndex(e => e.id === id);
-    return ids.find(x => entries.findIndex(e => e.id === x) > at) || ids[ids.length - 1] || null;
+  // ---- 浮层 ---------------------------------------------------------------------
+  const host = document.getElementById("modal");
+  let modal = null;  // 打开着的浮层：{ step, kind }
+  function openModal(node, extra) {
+    for (const m of document.querySelectorAll("video, audio")) m.pause();
+    put(host, node);
+    host.classList.add("open");
+    modal = extra || {};
+    syncSegs();
+    const button = host.querySelector(".close");
+    if (button) button.focus({ preventScroll: true });
+  }
+  function closeModal() {
+    if (!modal) return;
+    host.classList.remove("open");
+    put(host);
+    modal = null;
+  }
+  host.addEventListener("click", e => { if (e.target === host) closeModal(); });
+  const head = (eyebrow, title) => el("div", { class: "modal-head" },
+    el("div", { style: "min-width:0" }, el("div", { class: "cap", text: eyebrow }), el("h2", { class: "modal-title", text: title })),
+    el("button", { class: "close", "aria-label": "关闭", text: "×", onclick: closeModal }));
+  const modeName = shot => isPair(shot) ? "首尾帧" : "单图";
+
+  // 提示词全文：灰色是公共文本，网页上编辑过的另有提醒
+  function promptBody(shot, kind, label) {
+    const p = shot.prompts[kind];
+    if (!p) return [el("p", { class: "muted", text: "这一镜没有" + label })];
+    const what = kind === "image" ? "生图" : "生视频";
+    return [
+      p.web && el("p", { class: "web-note " + p.web, text: p.web === "differs"
+        ? `这一镜的${label}在 WorkRally 网页上编辑过，网页另存的那份和这里不一样。${what}用的是网页那份，push 改不到它：` +
+          "请先刷新网页，再把这里的全文粘贴进去保存。改好之前，对应的生成命令会报 stale_web_prompt 中止。"
+        : `这一镜的${label}在 WorkRally 网页上编辑过，网页另存着一份副本（目前和这里一致）。${what}用的是那份，push 改不到它：` +
+          "以后改这段提示词，除了 push，还要到网页上粘贴成同样的文字。" }),
+      el("p", { class: "prompt" },
+        p.before && el("span", { class: "common", text: p.before }),
+        el("span", { text: p.own }),
+        p.after && el("span", { class: "common", text: p.after })),
+      p.note && el("p", { class: "prompt-note", text: "拼接失败：" + p.note })];
+  }
+  function openPrompt(shot, kind) {
+    const title = el("h2", { class: "modal-title" });
+    const body = el("div", { class: "modal-body" });
+    const foot = el("div", { class: "modal-foot" });
+    const seg = el("nav", { class: "seg" });
+    function show(which) {
+      const [, , label] = PROMPTS.find(([k]) => k === which);
+      const p = shot.prompts[which];
+      title.textContent = label;
+      put(body, ...promptBody(shot, which, label).filter(Boolean));
+      body.scrollTop = 0;
+      put(foot, el("span", { text: !p ? "" : p.raw ? "整段自己写" : p.before || p.after ? "灰色是公共文本" : "" }),
+        el("span", { class: "grow" }), p && copyButton(p.before + p.own + p.after, "复制全文"));
+      pressSeg(seg, which);
+    }
+    seg.append(...segment(PROMPTS.map(([k, short]) => [k, short,
+      shot.prompts[k] && shot.prompts[k].web && el("span", { class: "web-dot " + shot.prompts[k].web })]), kind, show));
+    openModal(el("div", { class: "modal", role: "dialog", "aria-modal": "true" },
+      el("div", { class: "modal-head" },
+        el("div", { style: "min-width:0" }, el("div", { class: "cap", text: `镜头 ${shot.key} · ${modeName(shot)}` }), title),
+        el("button", { class: "close", "aria-label": "关闭", text: "×", onclick: closeModal })),
+      seg, body, foot));
+    show(kind);
   }
 
-  // 列表：切到列表时才建，单镜视图下不必给每一镜都建视频元素
-  const nothing = el("p", { class: "nothing hidden", text: "全部镜头都已完成。" });
-  let sections = [];
-  let built = false;
-  function buildList() {
-    if (built) return;
-    built = true;
-    if (data.film) list.append(el("section", { class: "shot film", id: "film" },
-      el("header", null, el("h2", { text: "成片" })),
-      el("div", { class: "frame" }, el("video", { src: data.film, controls: true, preload: "metadata", playsinline: true })),
-      el("p", { text: "改过素材后要重新合成，这里才会更新。" })));
-    list.append(...data.shots.map(card), nothing);
-    sections = [...list.querySelectorAll(".shot")];
+  // 参考图：清单里 keyframe.refs 的镜号和 ref_assets 名字
+  const REF_KIND = { shot: "镜头", file: "本地文件", asset: "媒资", unknown: "未登记" };
+  function openRefs(shot) {
+    const refs = shot.keyframe.refs;
+    openModal(el("div", { class: "modal wide", role: "dialog", "aria-modal": "true" },
+      head(`镜头 ${shot.key} · ${refs.length} 张参考图`, "参考图"),
+      el("div", { class: "modal-body" }, el("div", { class: "ref-grid" }, refs.map(r => el("div", { class: "ref-card" },
+        el("div", { class: "pic" }, r.src ? el("img", { src: r.src, alt: "" })
+          : r.kind === "shot" ? "那一镜还没有选用图" : r.kind === "asset" ? "媒资，页面上没有图（可在 page.previews 登记预览图）" : "不在 ref_assets 里"),
+        el("div", { class: "ref-name", text: r.kind === "shot" ? "镜头 " + r.name : r.name }),
+        el("div", { class: "ref-meta" }, el("span", { class: "tag", text: REF_KIND[r.kind] }),
+          el("span", { text: r.kind === "shot" ? "那一镜的选用图" : "ref_assets" })))))),
+      el("div", { class: "modal-foot" }, el("span", { text: "keyframe gen 用它们当参考图" }))));
   }
 
-  // 单镜视图：大图区默认放选用图（没选时放推荐的那张），候选条点哪张看哪张
-  const focus = { of: null, label: null, tab: "image" };
-  let stage = null;  // 当前这一镜的操作，给键盘用
-  function filmFocus() {
-    return el("section", { class: "focus" },
-      el("header", null, el("h2", { text: "成片" })),
-      el("div", { class: "fbody one" }, el("div", { class: "stage" },
-        el("video", { src: data.film, controls: true, preload: "metadata", playsinline: true, onloadedmetadata: orient }))),
-      el("p", { class: "final", text: "改过素材后要重新合成，这里才会更新。" }));
-  }
-
-  function shotFocus(shot) {
+  // 候选大图：左右切换，底下给出选图的命令（页面不改清单）
+  function candidates(shot) {
     const kf = shot.keyframe;
     const items = kf.candidates.filter(c => c.src);
     // 选用的图不在候选里（比如直接给的 asset_id）：放在最前面
-    if (kf.src && !items.some(c => c.picked)) items.unshift({ src: kf.src, label: "", picked: true, suggested: false });
-    const pickedAt = items.findIndex(c => c.picked);
-    let sel = pickedAt >= 0 ? pickedAt : Math.max(0, items.findIndex(c => c.suggested));
-    if (focus.of === shot.key) {
-      const again = items.findIndex(c => c.label === focus.label);
-      if (again >= 0) sel = again;
+    if (kf.src && !items.some(c => c.picked)) items.unshift({ src: kf.src, label: "", picked: true, last: false, suggested: false });
+    return items;
+  }
+  const candName = c => c.label ? "候选 " + c.label : "选用关键帧";
+  function candTags(c) {
+    return [c.picked && el("span", { class: "tag start", text: "选用" }), c.last && el("span", { class: "tag end", text: "尾帧" }),
+      c.suggested && el("span", { class: "tag suggested", text: "推荐" })].filter(Boolean);
+  }
+  function openCand(shot, start) {
+    const items = candidates(shot);
+    if (!items.length) return;
+    let at = Math.max(0, Math.min(items.length - 1, start));
+    const eyebrow = el("div", { class: "cap" }), title = el("h2", { class: "modal-title" });
+    const img = el("img", { alt: "", onload: orient });
+    const prev = el("button", { class: "nav-btn prev", "aria-label": "上一张", text: "‹", onclick: () => go(at - 1) });
+    const next = el("button", { class: "nav-btn next", "aria-label": "下一张", text: "›", onclick: () => go(at + 1) });
+    const meta = el("div", { class: "lb-meta" });
+    const thumbs = items.map((c, i) => el("button", { class: "cand" + (c.picked ? " picked" : c.last ? " last" : c.suggested ? " suggested" : ""),
+      title: candName(c), onclick: () => go(i) }, el("img", { src: c.src, alt: "" }), el("span", { class: "a", text: c.label || "选用" })));
+    const strip = el("div", { class: "lb-thumbs" }, thumbs);
+    const foot = el("div", { class: "modal-foot" });
+    function go(i) {
+      if (i < 0 || i >= items.length) return;
+      at = i;
+      const c = items[at], kf = shot.keyframe;
+      eyebrow.textContent = `镜头 ${shot.key} · ${modeName(shot)} · ${at + 1} / ${items.length}`;
+      title.textContent = candName(c);
+      img.src = c.src;
+      prev.disabled = at === 0;
+      next.disabled = at === items.length - 1;
+      put(meta, ...candTags(c), c.suggested && kf.suggest_note && el("span", { class: "note", text: kf.suggest_note }));
+      thumbs.forEach((t, j) => t.classList.toggle("on", j === at));
+      revealIn(strip, thumbs[at]);
+      put(foot,
+        c.label && !c.picked ? command(`wrally keyframe pick ${shot.key} ${c.label}`, "复制") : el("span", { text: c.picked ? "这一张是选用图" : "" }),
+        c.label && !c.picked && !c.last ? command(`wrally keyframe pick ${shot.key} ${c.label} --last`, "复制") : null,
+        el("span", { class: "grow" }), el("span", { text: "页面不改清单，选图用命令" }));
+      // 当前候选记下来，刷新后接着看这张
+      current.cand = c.label;
     }
-    let back = null;  // 空格对比选用图时，记住原来看的那张
-    let big = !items.length && Boolean(shot.video.src);  // 大图区放的是视频
-    const caption = c => [c.label ? "候选 " + c.label : "选用关键帧", c.label && c.picked ? "选用" : null,
-      c.suggested ? "推荐" : null].filter(Boolean).join(" · ");
-    const group = items.map(c => ({ src: c.src, caption: `${shot.key} · ${caption(c)}` }));
-
-    const view = el("div", { class: "stage" });
-    const thumbs = items.map((c, i) => el("button", {
-      class: "cand" + (c.picked ? " picked" : "") + (c.suggested ? " suggested" : ""), title: caption(c),
-      onclick: () => { big = false; select(i); } },
-    el("img", { src: c.src, alt: "" }), el("span", { text: c.label || "选用" }),
-    c.suggested ? el("em", { text: "推荐" }) : null));
-    const missing = kf.candidates.filter(c => !c.src)
-      .map(c => el("div", { class: "cand" }, "未下载", el("span", { text: c.label })));
-    const strip = el("div", { class: "strip" }, thumbs, missing);
-    const bar = el("div", { class: "bar" });
-    const bigButton = shot.video.src ? el("button", { class: "copy", onclick: () => toggleVideo() }) : null;
-
-    const reveal = () => { if (!big) revealIn(strip, thumbs[sel]); };
-    function draw() {
-      const c = items[sel];
-      if (big) view.replaceChildren(
-        el("video", { src: shot.video.src, poster: shot.replaced ? null : kf.src, controls: true, playsinline: true,
-          preload: "metadata", onloadedmetadata: orient }),
-        el("span", { class: "tag", text: shot.replaced ? "视频（成片用）" : "视频" }));
-      else if (c) view.replaceChildren(
-        el("img", { src: c.src, alt: "", onload: orient, onclick: () => show(group, sel) }),
-        el("span", { class: "tag" + (c.picked ? " picked" : ""), text: caption(c) }));
-      else view.replaceChildren(kf.status.label);
-      view.classList.toggle("empty", !big && !c);
-      thumbs.forEach((t, i) => t.classList.toggle("on", !big && i === sel));
-      reveal();
-      const cmd = c && c.label ? `wrally keyframe pick ${shot.key} ${c.label}` : "";
-      bar.replaceChildren(
-        kf.suggest ? el("p", { class: "suggest-note", title: kf.suggest_note || null,
-          text: `推荐 ${kf.suggest}${kf.suggest_note ? "：" + kf.suggest_note : ""}` }) : el("span", { class: "spacer" }),
-        !big && cmd && !c.picked
-          ? el("span", { class: "pickcmd" }, el("code", { title: "在单集目录下运行", text: cmd }), copyButton(cmd, "复制命令"))
-          : el("span", { text: kf.pick ? `选用 ${kf.pick} / 共 ${kf.candidates.length} 张`
-            : kf.candidates.length ? `共 ${kf.candidates.length} 张，还没选` : kf.status.label }));
-      if (bigButton) bigButton.textContent = big ? "大图放关键帧" : "放到大图";
-      focus.of = shot.key;
-      focus.label = c ? c.label : null;
-    }
-    function select(i) {
-      if (!items.length) return;
-      sel = (i + items.length) % items.length;
-      back = null;
-      draw();
-    }
-    function toggleVideo() {
-      if (!shot.video.src) return;
-      big = !big;
-      draw();
-    }
-    stage = {
-      step: d => { big = false; select(sel + d); },
-      pick: i => { if (i < items.length) { big = false; select(i); } },
-      compare: () => {
-        if (big || pickedAt < 0) return;
-        if (sel !== pickedAt) { back = sel; sel = pickedAt; } else if (back !== null) { sel = back; back = null; }
-        draw();
-      },
-      video: toggleVideo,
-    };
-
-    // 提示词：三段放成标签页，正文只在右栏里面滚
-    const kinds = PROMPTS.filter(([kind]) => shot.prompts[kind]);
-    const panel = el("div", { class: "panel" });
-    const tabs = kinds.map(([kind, label]) => el("button", { "data-tab": kind,
-      onclick: () => { focus.tab = kind; openTab(); } },
-    label.replace("提示词", ""), shot.prompts[kind].web && el("i", { class: "web-dot " + shot.prompts[kind].web })));
-    function openTab() {
-      if (!kinds.length) { panel.replaceChildren(el("p", { class: "empty", text: "这一镜还没有提示词" })); return; }
-      const [kind, label] = kinds.find(([k]) => k === focus.tab) || kinds[0];
-      for (const b of tabs) b.setAttribute("aria-pressed", String(b.dataset.tab === kind));
-      const parts = promptParts(shot, kind, label);
-      panel.replaceChildren(el("div", { class: "head" }, parts.web, el("span", { text: parts.hint }), parts.copy), ...parts.body.filter(Boolean));
-      panel.scrollTop = 0;
-    }
-
-    const node = el("section", { class: "focus" + (shot.cut ? " cut" : "") },
-      el("header", null,
-        el("h2", { text: shot.key }),
-        el("span", { class: "count", text: `${data.shots.indexOf(shot) + 1} / ${data.shots.length}` }),
-        pills(shot)),
-      finalNote(shot),
-      el("p", { class: "line" + (shot.narration ? "" : " none"), text: shot.narration || "这一镜还没有台词" }),
-      el("div", { class: "fbody" },
-        el("div", { class: "stagecol" },
-          el("div", { class: "view" }, view, thumbs.length || missing.length ? strip : null), bar),
-        el("div", { class: "sidecol" },
-          el("figure", null,
-            el("div", { class: "frame" }, shot.video.src
-              ? el("video", { src: shot.video.src, poster: shot.replaced ? null : kf.src, controls: true,
-                playsinline: true, preload: kf.src && !shot.replaced ? "none" : "metadata" })
-              : shot.video.status.label),
-            el("figcaption", null, el("b", { text: shot.replaced ? "视频（成片用）" : "视频" }),
-              el("span", { text: shot.video.status.note || shot.video.status.label }), bigButton)),
-          voiceRow(shot),
-          kinds.length ? el("div", { class: "seg" }, tabs) : null,
-          panel)));
-    draw();
-    openTab();
-    requestAnimationFrame(reveal);
-    return node;
+    openModal(el("div", { class: "modal wide", role: "dialog", "aria-modal": "true" },
+      el("div", { class: "modal-head" }, el("div", { style: "min-width:0" }, eyebrow, title),
+        el("button", { class: "close", "aria-label": "关闭", text: "×", onclick: closeModal })),
+      el("div", { class: "stage" }, img, prev, next), meta, strip, foot), { step: d => go(at + d) });
+    go(at);
+  }
+  function openFilm() {
+    openModal(el("div", { class: "modal wide", role: "dialog", "aria-modal": "true" },
+      head(`${data.name} · 成片`, data.title || data.name),
+      el("div", { class: "stage" }, el("video", { src: data.film, controls: true, autoplay: true, playsinline: true, preload: "metadata", onloadedmetadata: orient })),
+      el("div", { class: "modal-foot" }, el("span", { text: "改过素材后要重新合成、再跑一次 wrally page，这里才会更新" }))));
   }
 
-  function renderFocus(id) {
-    setCurrent(id);
-    stage = null;
-    if (!id) focusBox.replaceChildren(el("p", { class: "nothing", text: "全部镜头都已完成。" }));
-    else if (id === "film") focusBox.replaceChildren(filmFocus());
-    else focusBox.replaceChildren(shotFocus(byId.get(id)));
-    // 相邻两镜的候选先在后台载入，换镜时不用等
-    const ids = shownIds(), at = ids.indexOf(id);
-    for (const near of [ids[at - 1], ids[at + 1]]) {
-      const shot = byId.get(near);
-      if (shot) for (const c of shot.keyframe.candidates) if (c.src) new Image().src = c.src;
+  // ---- 中栏：这一镜 -------------------------------------------------------------
+  const detail = document.getElementById("detail");
+  const info = document.getElementById("info");
+  let frameBox = null;
+
+  function keyframeView(shot) {
+    const kf = shot.keyframe, items = candidates(shot);
+    const zoom = label => () => openCand(shot, Math.max(0, items.findIndex(c => c.label === label)));
+    if (isPair(shot) && kf.src) {
+      const side = (cls, tag, label, src) => el("div", { class: "pair-item " + cls },
+        src ? el("img", { src, alt: "", onload: orient, onclick: zoom(label) }) : el("div", { class: "missing", text: "没有下载" }),
+        el("div", { class: "pair-cap" }, el("span", { class: "kf-tag " + cls, text: tag }), el("span", { text: label })));
+      return [el("div", { class: "pairs" }, side("start", "起始", kf.pick || "选用", kf.src),
+        el("div", { class: "pair-arrow", text: "→" }), side("end", "尾帧", kf.last, kf.last_src))];
     }
+    const src = cover(shot);
+    if (!src) return [el("div", { class: "frame-empty" }, el("span", { text: "还没有关键帧" }),
+      el("span", { class: "sub", text: kf.pick || !kf.candidates.length ? kf.status.label : "有候选，还没选" }))];
+    const picked = items.findIndex(c => c.src === src);
+    return [el("img", { src, alt: "", onload: orient, onclick: () => openCand(shot, picked) }),
+      !kf.src && el("span", { class: "glass media-mode", style: "top:40px", text: `推荐 ${kf.suggest}（未选）` })];
+  }
+  function videoView(shot) {
+    if (!shot.video.src) return [el("div", { class: "frame-empty" }, el("span", { text: "视频" + shot.video.status.label }),
+      el("span", { class: "sub", text: shot.video.status.note || "生成后可以在这里播放" }))];
+    // 另做的视频不拿清单里的关键帧当封面，免得看起来像旧画面
+    return [el("video", { src: shot.video.src, poster: shot.replaced ? null : shot.keyframe.src, controls: true, playsinline: true,
+      preload: "metadata", onloadedmetadata: orient })];
+  }
+  function drawFrame(shot, autoplay) {
+    const video = current.media === "video";
+    const sw = el("div", { class: "glass media-switch" }, [["keyframe", isPair(shot) ? "首尾帧" : "关键帧"], ["video", "▶ 视频"]].map(([value, label]) =>
+      el("button", { "aria-pressed": String(current.media === value), text: label, onclick: () => setMedia(value) })));
+    const mode = el("span", { class: "glass media-mode", text: video && shot.replaced ? "成片用另做的视频" : modeName(shot) });
+    put(frameBox, ...(video ? videoView(shot) : keyframeView(shot)).filter(Boolean), mode, sw,
+      !video && shot.video.src && !isPair(shot)
+        ? el("button", { class: "play-badge", "aria-label": "播放这一镜的视频", onclick: () => setMedia("video", true) }, icon("play")) : null);
+    const player = frameBox.querySelector("video");
+    if (autoplay && player) player.play().catch(() => {});
+  }
+  function setMedia(value, autoplay) {
+    current.media = value;
+    const shot = byKey.get(current.key);
+    if (shot) drawFrame(shot, autoplay);
+  }
+
+  function spec(label, text, tone, sub) {
+    return el("div", { class: "spec" }, el("span", { class: "cap", text: label }),
+      el("b", { class: tone === "ok" ? null : tone, text }), el("span", { class: "s", text: sub || " ", title: sub || null }));
+  }
+  function specs(shot) {
+    const kf = shot.keyframe, v = shot.video.status, a = shot.audio.status;
+    const kfText = kf.pick && kf.last ? `${kf.pick} → ${kf.last}` : kf.pick ? "选用 " + kf.pick : kf.status.label;
+    const kfSub = kf.candidates.length ? `共 ${kf.candidates.length} 张` + (kf.suggest && kf.suggest !== kf.pick ? ` · 推荐 ${kf.suggest}` : "") : kf.status.note;
+    return el("div", { class: "specs" },
+      spec("关键帧", kfText, TONE[kf.status.state], kfSub),
+      spec("视频", v.label, TONE[v.state], v.note || (shot.replaced ? "成片用另做的视频" : modeName(shot))),
+      spec("旁白", a.label, TONE[a.state], a.note || (shot.audio.f0 !== null ? `音高 ${shot.audio.f0} Hz` : "")));
+  }
+  function alerts(shot) {
+    const out = [];
+    if (shot.cut) out.push(el("div", { class: "alert" }, el("span", { class: "glyph", "data-g": "–" }),
+      el("span", null, el("strong", { text: "不进成片" }), el("span", { class: "t", text: "：素材留着，合成时跳过这一镜。" }))));
+    else if (shot.replaced) out.push(el("div", { class: "alert" }, el("span", { class: "glyph", "data-g": "i" }),
+      el("span", null, el("strong", { text: "成片用另做的视频" }),
+        el("span", { class: "t", text: `：${shot.replaced}。关键帧、候选和提示词是清单里的，不一定是这条视频用的。` }))));
+    for (const [kind, label] of KINDS) {
+      const st = shot[kind].status;
+      if (BAD.includes(st.state)) out.push(el("div", { class: "alert " + (st.state === "failed" ? "bad" : "warn") },
+        el("span", { class: "glyph", "data-g": "!" }),
+        el("span", null, el("strong", { text: `${label}${st.label}` }), st.note && el("span", { class: "t", text: "：" + st.note }))));
+    }
+    for (const [kind, , label] of PROMPTS) {
+      const p = shot.prompts[kind];
+      if (p && p.web === "differs") out.push(el("button", { class: "alert warn", onclick: () => openPrompt(shot, kind) },
+        el("span", { class: "glyph", "data-g": "!" }),
+        el("span", null, el("strong", { text: `${label}的网页副本不同` }), el("span", { class: "t", text: "：生成用的是网页那份，push 改不到它。点这里看怎么改。" }))));
+    }
+    return out.length ? el("div", { class: "alerts" }, out) : null;
+  }
+  function strip(shot) {
+    const kf = shot.keyframe, items = candidates(shot);
+    const missing = kf.candidates.filter(c => !c.src);
+    const pick = [kf.pick ? "选用 " + kf.pick : kf.src ? "已选用" : "还没选", kf.last && "尾帧 " + kf.last,
+      kf.suggest && kf.suggest !== kf.pick && "推荐 " + kf.suggest].filter(Boolean).join(" · ");
+    if (!items.length && !missing.length) return [el("div", { class: "cands-head" }, el("span", { class: "cap", text: "候选" })),
+      el("div", { class: "empty-cands" }, el("span", { text: "还没有候选关键帧" }), el("span", { class: "sub", text: kf.status.label }))];
+    return [el("div", { class: "cands-head" }, el("span", { class: "cap", text: `候选 ${kf.candidates.length || 1} 张` }),
+      el("span", { class: "pick", title: kf.suggest_note || null, text: pick })),
+    el("div", { class: "strip" }, items.map((c, i) => {
+      const mark = c.picked ? "选用" : c.last ? "尾帧" : c.suggested ? "推荐" : "";
+      return el("button", { class: "cand" + (c.picked ? " picked" : c.last ? " last" : c.suggested ? " suggested" : ""),
+        title: candName(c), onclick: () => openCand(shot, i) },
+        el("img", { src: c.src, alt: "", loading: "lazy" }), el("span", { class: "a", text: c.label }), mark && el("span", { class: "m", text: mark }));
+    }), missing.map(c => el("div", { class: "cand", title: "没有下载" }, "未下载", el("span", { class: "a", text: c.label }))))];
+  }
+  function refChip(shot) {
+    const refs = shot.keyframe.refs;
+    if (!refs.length) return null;
+    return el("button", { class: "ref-chip", title: refs.map(r => r.name).join(" / "), onclick: () => openRefs(shot) },
+      el("span", { class: "ref-stack" }, refs.slice(0, 3).map(r => r.src ? el("img", { src: r.src, alt: "" }) : el("span"))),
+      el("span", { text: `参考图 ${refs.length}` }));
+  }
+  function drawDetail(shot) {
+    const [label, tone] = badge(shot);
+    frameBox = el("div", { class: "frame" });
+    detail.className = "detail" + (shot.cut ? " cut" : "");
+    put(detail,
+      el("div", { class: "dhead" },
+        el("div", { class: "dhead-main" },
+          el("div", { class: "cap" }, `镜头 ${shot.key} · `, el("span", { class: isPair(shot) ? "pair" : null, text: modeName(shot) }),
+            ` · ${data.shots.indexOf(shot) + 1} / ${data.shots.length}`),
+          el("h2", { class: "dtitle" + (shot.narration ? "" : " none"), title: shot.narration || null, text: shot.narration || "这一镜还没有台词" })),
+        el("div", { class: "dhead-side" }, refChip(shot), el("span", { class: "badge " + tone, text: label }))),
+      frameBox, specs(shot), alerts(shot), ...strip(shot));
+    drawFrame(shot);
+    const film = detail.querySelector(".strip");
+    if (film) requestAnimationFrame(() => revealIn(film, film.querySelector(".picked")));
+  }
+
+  // ---- 右栏：提示词、台词与旁白、检查 ------------------------------------------
+  function audioPlayer(shot) {
+    const a = shot.audio;
+    if (!a.src) return el("div", { class: "audio-empty", text: "旁白" + a.status.label + (a.status.note ? "：" + a.status.note : "") });
+    const audio = el("audio", { src: a.src, preload: "metadata" });
+    const button = el("button", { class: "audio-play", "aria-label": "播放 / 暂停旁白", onclick: () => audio.paused ? audio.play() : audio.pause() });
+    const fill = el("i"), time = el("span", { class: "audio-time" });
+    const track = el("div", { class: "audio-track", role: "slider", "aria-label": "旁白进度", onclick: e => {
+      if (!audio.duration) return;
+      const r = track.getBoundingClientRect();
+      audio.currentTime = Math.min(1, Math.max(0, (e.clientX - r.left) / (r.width || 1))) * audio.duration;
+    } }, el("span", null, fill));
+    const sync = () => {
+      const d = audio.duration || 0;
+      fill.style.width = d ? audio.currentTime / d * 100 + "%" : "0";
+      time.textContent = `${fmt(audio.currentTime)} / ${d ? fmt(d) : "–:––"}`;
+      put(button, icon(audio.paused ? "play" : "pause"));
+    };
+    for (const name of ["timeupdate", "loadedmetadata", "play", "pause", "ended"]) audio.addEventListener(name, sync);
+    sync();
+    return el("div", { class: "audio" }, audio, button, track, time);
+  }
+  function checkRow(label, value, tone, note) {
+    return el("div", { class: "check" }, el("span", { class: "k", text: label }), el("span", { class: "n", title: note || null, text: note || "" }),
+      el("span", { class: "v " + tone, text: value }));
+  }
+  function measure(label, value, unit, limit) {
+    if (value === null || value === undefined) return null;
+    const over = limit !== null && limit !== undefined && value > limit;
+    return checkRow(label, `${value} ${unit}`, limit === null || limit === undefined ? "" : over ? "warn" : "ok",
+      limit === null || limit === undefined ? "" : `上限 ${limit} ${unit}`);
+  }
+  function drawInfo(shot) {
+    const limits = data.limits || {};
+    const webs = PROMPTS.filter(([k]) => shot.prompts[k] && shot.prompts[k].web);
+    const differs = webs.filter(([k]) => shot.prompts[k].web === "differs");
+    put(info,
+      el("section", { class: "block" }, el("div", { class: "cap", text: "提示词" }),
+        el("div", { class: "prompts" }, PROMPTS.map(([kind, short]) => {
+          const p = shot.prompts[kind];
+          return el("button", { class: "prow", "aria-label": `查看${short}提示词全文`, onclick: () => openPrompt(shot, kind) },
+            el("span", { class: "k" }, short, p && p.web && el("span", { class: "web-dot " + p.web })),
+            el("span", { class: "txt" + (p ? "" : " muted"), text: p ? (p.own || p.before + p.after) : "没有" }),
+            el("span", { class: "more", text: "全文" }));
+        }))),
+      el("section", { class: "block" }, el("div", { class: "cap", text: "台词 / 旁白" }),
+        el("p", { class: "quote" + (shot.narration ? "" : " none"), text: shot.narration || "这一镜还没有台词" }),
+        audioPlayer(shot)),
+      el("section", { class: "block" }, el("div", { class: "cap", text: "检查" }),
+        el("div", { class: "checks" },
+          KINDS.map(([kind, label]) => checkRow(label, shot[kind].status.label, TONE[shot[kind].status.state], shot[kind].status.note)),
+          measure("音高", shot.audio.f0, "Hz", limits.f0_max),
+          measure("声道差", shot.audio.channel_gap, "dB", limits.channel_gap_max),
+          measure("底噪", shot.audio.noise_floor, "dB", limits.noise_floor_max),
+          webs.length ? checkRow("网页副本", differs.length ? "不同" : "一致", differs.length ? "warn" : "ok",
+            (differs.length ? differs : webs).map(([, short]) => short).join("、")) : null)),
+      el("div", { class: "info-foot", text: "只读：选图用 wrally keyframe pick，改提示词后 wrally push" }));
+  }
+
+  function focusShot(key) {
+    const shot = byKey.get(key);
+    if (!shot) return;
+    if (key !== current.key) current.cand = null;
+    current.key = key;
+    for (const b of rail.querySelectorAll(".shot")) b.setAttribute("aria-current", String(b.dataset.shot === key));
+    revealIn(rail, rail.querySelector('[aria-current="true"]'));
+    if (current.media === "video" && !shot.video.src) current.media = "keyframe";
+    drawDetail(shot);
+    drawInfo(shot);
+    // 相邻两镜的图先在后台载入，换镜时不用等
+    const list = shown(), at = list.indexOf(shot);
+    for (const near of [list[at - 1], list[at + 1]]) {
+      if (near) for (const c of near.keyframe.candidates) if (c.src) new Image().src = c.src;
+    }
+  }
+  function nothing() {
+    current.key = null;
+    put(detail, el("div", { class: "frame-empty" }, el("span", { text: "这一集还没有镜头" })));
+    put(info);
   }
 
   // 一次只响一个：开始播放时停掉其他的
@@ -727,168 +1004,88 @@ body.single { overflow: hidden; }
     for (const m of document.querySelectorAll("video, audio")) if (m !== e.target) m.pause();
   }, true);
 
-  // 侧栏高亮当前镜头：列表里取视口上部那条线压着的卡片
-  const links = new Map([...nav.querySelectorAll("a")].map(a => [a.dataset.for, a]));
-  let currentId = null;
-  let mode = null;
-  function setCurrent(id) {
-    if (id === currentId) return;
-    currentId = id;
-    for (const [key, a] of links) a.setAttribute("aria-current", String(key === id));
-    revealIn(nav, links.get(id));
-  }
-  const visible = () => sections.filter(s => !s.classList.contains("hidden"));
-  function spy() {
-    if (mode !== "list") return;
-    const shown = visible();
-    if (!shown.length) return;
-    const probe = Math.max(140, window.innerHeight * .3);
-    const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
-    const hit = atEnd ? shown[shown.length - 1]
-      : shown.filter(s => s.getBoundingClientRect().top <= probe).pop() || shown[0];
-    setCurrent(hit.id);
-  }
-  let queued = false;
-  window.addEventListener("scroll", () => {
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(() => { queued = false; spy(); });
-  }, { passive: true });
-  window.addEventListener("resize", spy);
-  // 单镜视图里点侧栏只换镜，不跳锚点
-  nav.addEventListener("click", e => {
-    const a = e.target.closest("a");
-    if (!a || mode !== "single") return;
-    e.preventDefault();
-    renderFocus(a.dataset.for);
-  });
-
-  // 键盘：J / K 上下一镜；单镜视图里左右换候选、数字直接跳、空格对比选用图、V 大图放视频；看大图时 Esc 关闭、左右切换
+  // 键盘：J / K 上下一镜，V 换关键帧 / 视频；大图里左右换候选；Esc 关浮层
   document.addEventListener("keydown", e => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (box) {
-      if (e.key === "Escape") close();
-      else if (e.key === "ArrowRight") box.step(1);
-      else if (e.key === "ArrowLeft") box.step(-1);
+    if (modal) {
+      if (e.key === "Escape") closeModal();
+      else if (modal.step && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); modal.step(e.key === "ArrowRight" ? 1 : -1); }
       return;
     }
+    // 焦点在播放器上时，按键留给它
+    if (e.target instanceof Element && e.target.matches("video, audio")) return;
     const step = { j: 1, k: -1 }[e.key.toLowerCase()];
-    if (mode === "single") {
-      if (step) {
-        const ids = shownIds();
-        const next = ids[Math.min(ids.length - 1, Math.max(0, ids.indexOf(currentId) + step))];
-        if (next && next !== currentId) renderFocus(next);
-        return;
-      }
-      // 焦点在播放器上时，方向键和空格留给它
-      if (!stage || (e.target instanceof Element && e.target.matches("video, audio"))) return;
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        stage.step(e.key === "ArrowRight" ? 1 : -1);
-      } else if (e.key === " ") {
-        e.preventDefault();
-        stage.compare();
-      } else if (e.key.toLowerCase() === "v") stage.video();
-      else if (/^[1-9]$/.test(e.key)) stage.pick(Number(e.key) - 1);
-      return;
+    if (step) {
+      const list = shown(), at = list.findIndex(s => s.key === current.key);
+      const next = list[Math.min(list.length - 1, Math.max(0, at + step))];
+      if (next && next.key !== current.key) focusShot(next.key);
+    } else if (e.key.toLowerCase() === "v") {
+      const shot = byKey.get(current.key);
+      if (shot && shot.video.src) setMedia(current.media === "video" ? "keyframe" : "video");
+    } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      const shot = byKey.get(current.key);
+      if (!shot) return;
+      e.preventDefault();
+      const items = candidates(shot), src = cover(shot);
+      openCand(shot, Math.max(0, items.findIndex(c => c.src === src)));
     }
-    if (!step) return;
-    const shown = visible();
-    const next = shown[Math.min(shown.length - 1, Math.max(0, shown.findIndex(s => s.id === currentId) + step))];
-    if (next) next.scrollIntoView();
   });
 
-  // 筛选：卡片和侧栏的条目一起收；单镜视图里当前这镜被筛掉就换到后面一镜
-  const filterButtons = [...document.querySelectorAll("#filter button")];
-  function applyFilter(which) {
-    current.filter = which;
-    const ids = new Set(shownIds());
-    for (const [id, a] of links) a.classList.toggle("hidden", !ids.has(id));
-    for (const section of sections) section.classList.toggle("hidden", !ids.has(section.id));
-    nothing.classList.toggle("hidden", [...ids].some(id => id !== "film"));
-    for (const b of filterButtons) b.setAttribute("aria-pressed", String(b.dataset.filter === which));
-    if (mode === "single" && !ids.has(currentId)) renderFocus(nearest(currentId));
-    spy();
-  }
-  for (const b of filterButtons) b.addEventListener("click", () => applyFilter(b.dataset.filter));
+  // ---- 底栏 ---------------------------------------------------------------------
+  const fresh = el("span", { class: "fresh" });
+  const running = live.filter(hasState("running")).length;
+  put(document.getElementById("foot"), el("span", { class: "ro", text: "只读视图" }), el("span", { text: "·" }), fresh,
+    data.note && el("span", { class: "note", text: "· 公共文本读取失败：" + data.note }),
+    el("span", { class: "grow" }), el("span", { text: running ? `${running} 镜生成中` : "无进行中任务" }),
+    el("span", { class: "keys" }, " · ", el("kbd", { text: "J" }), " ", el("kbd", { text: "K" }), " 上下一镜 ",
+      el("kbd", { text: "V" }), " 视频 ", el("kbd", { text: "←" }), " ", el("kbd", { text: "→" }), " 候选大图"));
 
-  // 单镜 / 列表：选哪个记在浏览器里，各集通用；手机宽度一律用列表
-  const VIEW = "wrally-page:view";
-  const viewButtons = [...document.querySelectorAll("#views button")];
-  const narrow = window.matchMedia("(max-width: 640px)");
-  let preferred = "single";
-  try { if (localStorage.getItem(VIEW) === "list") preferred = "list"; } catch (e) { /* 浏览器不给用就算了 */ }
-  function applyView(target) {
-    for (const b of viewButtons) b.setAttribute("aria-pressed", String(b.dataset.view === preferred));
-    const next = narrow.matches ? "list" : preferred;
-    if (next === mode) return;
-    mode = next;
-    document.body.classList.toggle("single", mode === "single");
-    const id = target === undefined ? currentId : target;
-    if (mode === "single") {
-      renderFocus(nearest(id));
-      return;
-    }
-    focusBox.replaceChildren();
-    stage = null;
-    buildList();
-    applyFilter(current.filter);
-    const section = id && document.getElementById(id);
-    if (section) section.scrollIntoView({ behavior: "instant" });
-    spy();
-  }
-  for (const b of viewButtons) b.addEventListener("click", () => {
-    preferred = b.dataset.view;
-    try { localStorage.setItem(VIEW, preferred); } catch (e) { /* 同上 */ }
-    applyView();
-  });
-  narrow.addEventListener("change", () => applyView());
-
-  // 刷新前后保持筛选、当前镜头和看的那张候选、标签页、展开的段落和滚动位置
+  // 刷新前后保持筛选、当前镜头、关键帧 / 视频和正在看的那张候选
   const STORE = "wrally-page:" + location.pathname;
-  function remember() {
+  window.addEventListener("pagehide", () => {
     try {
       sessionStorage.setItem(STORE, JSON.stringify({
-        filter: current.filter, current: currentId, of: focus.of, label: focus.label, tab: focus.tab, shape,
-        y: mode === "list" ? window.scrollY : null,
-        open: [...document.querySelectorAll("details[open]")].map(d => d.id),
+        filter: current.filter, key: current.key, media: current.media, shape,
+        cand: modal && modal.step ? current.cand : null,
       }));
-    } catch (e) { /* 同上 */ }
-  }
-  function restore() {
+    } catch (e) { /* 浏览器不给用就算了 */ }
+  });
+  (() => {
     let saved = null;
     try { saved = JSON.parse(sessionStorage.getItem(STORE) || "null"); } catch (e) { /* 同上 */ }
-    current.filter = saved && saved.filter === "open" ? "open" : "all";
     if (saved) {
-      Object.assign(focus, { of: saved.of || null, label: saved.label ?? null, tab: saved.tab || "image" });
+      current.media = saved.media === "video" ? "video" : "keyframe";
       setShape(saved.shape);
     }
-    const hash = location.hash.slice(1);
-    applyView(saved && saved.current || (links.has(hash) ? hash : null));
-    applyFilter(current.filter);
-    if (mode !== "list" || !saved) return;
-    for (const id of saved.open || []) {
-      const d = document.getElementById(id);
-      if (d) d.open = true;
+    const hash = location.hash.replace(/^#s?/, "");
+    current.key = saved && byKey.has(saved.key) ? saved.key : byKey.has(hash) ? hash : null;
+    current.filter = saved && FILTERS.some(([f]) => f === saved.filter) ? saved.filter : "all";
+    pressSeg(filters, current.filter);
+    drawRail();
+    const list = shown();
+    const start = byKey.get(current.key) || list[0] || data.shots[0];
+    if (!start) { nothing(); return; }
+    focusShot(start.key);
+    if (saved && saved.cand !== null && saved.cand !== undefined) {
+      const items = candidates(start), at = items.findIndex(c => c.label === saved.cand);
+      if (at >= 0) openCand(start, at);
     }
-    if (!location.hash && saved.y !== null) {
-      requestAnimationFrame(() => { window.scrollTo({ top: saved.y || 0, behavior: "instant" }); spy(); });
-    }
-  }
-  window.addEventListener("pagehide", remember);
-  restore();
+  })();
+  requestAnimationFrame(syncSegs);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncSegs);
+  window.addEventListener("resize", syncSegs);
 
   // 发现更新：file:// 下不能 fetch，所以定时用 script 标签加载版本文件，它会调用 __wrallyPage
   const stamp = new Date(document.lastModified);
   if (!isNaN(stamp)) fresh.textContent = "更新于 " + stamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   let offered = false;
-  const busy = () => box || [...document.querySelectorAll("video, audio")].some(m => !m.paused && !m.ended);
+  const busy = () => (modal && !modal.step) || [...document.querySelectorAll("video, audio")].some(m => !m.paused && !m.ended);
   window.__wrallyPage = version => {
     if (version === VERSION) return;
     if (!busy()) { location.reload(); return; }
     if (offered) return;
-    offered = true;  // 正在播放或看大图时不打断，等人来点
-    fresh.replaceChildren(el("button", { text: "有更新 · 点击刷新", onclick: () => location.reload() }));
+    offered = true;  // 正在播放或看提示词全文时不打断，等人来点
+    put(fresh, el("button", { text: "有更新 · 点击刷新", onclick: () => location.reload() }));
   };
   setInterval(() => {
     const probe = el("script", { src: ".wrally/page.version.js?t=" + Date.now() });

@@ -98,6 +98,54 @@ def test_keyframe_pick_candidates_and_skip(ws):
     assert shot(ws, "00")["keyframe"]["status"]["state"] == "skipped"
 
 
+def test_last_frame_and_refs(ws):
+    def change(e):
+        refs = flow_seq(["01", "人物", "书房", "门", "没登记"])
+        e["keyframe"] = {"candidates": flow_seq(["a1", "a2", "a3"]), "asset_id": "a1", "pick": "A",
+                         "last": "a3", "last_pick": "C", "refs": refs}  # fmt: skip
+
+    edit(ws, "02", change)
+    edit(ws, "01", lambda e: e.update(keyframe={"candidates": flow_seq(["b1", "b2"]), "asset_id": "b2"}))
+    for rel in (".wrally/keyframes/02/A.png", ".wrally/keyframes/02/C.png", ".wrally/keyframes/01/A.png",
+                ".wrally/keyframes/01/B.png", "refs/人物.png"):  # fmt: skip
+        put(ws, rel)
+    data = ws.load()
+    data["ref_assets"] = {"人物": "refs/人物.png", "书房": "b1", "门": "remote1"}
+    ws.save(data)
+    kf = shot(ws, "02")["keyframe"]
+    assert kf["last"] == "C" and kf["last_src"].startswith(".wrally/keyframes/02/C.png?v=")
+    assert [c["last"] for c in kf["candidates"]] == [False, False, True]
+    refs = {r["name"]: r for r in kf["refs"]}
+    assert refs["01"]["kind"] == "shot" and refs["01"]["src"].startswith(".wrally/keyframes/01/B.png?v=")
+    assert refs["人物"]["kind"] == "file" and refs["人物"]["src"].startswith("refs/%E4%BA%BA%E7%89%A9.png?v=")
+    # 写的是媒资 ID：这一集下载过同一个媒资（01 的候选 A）就用那个文件，没下载过的没有图
+    assert refs["书房"] == {"name": "书房", "kind": "asset", "src": refs["书房"]["src"]}
+    assert refs["书房"]["src"].startswith(".wrally/keyframes/01/A.png?v=")
+    assert refs["门"]["src"] is None and refs["没登记"] == {"name": "没登记", "kind": "unknown", "src": None}
+    # 不在候选里的尾帧只有名字
+    edit(ws, "02", lambda e: e["keyframe"].update(last="elsewhere"))
+    kf = shot(ws, "02")["keyframe"]
+    assert kf["last"] == "elsewhere" and kf["last_src"] is None
+
+
+def test_measured_audio_and_limits(ws):
+    edit(
+        ws,
+        "02",
+        lambda e: e.update(audio={"status": "done", "f0": 95, "channel_gap": 0.4, "noise_floor": "x"}),
+    )
+    data = ws.load()
+    data["rules"] = {"f0_max": 97, "noise_floor_max": -50}
+    ws.save(data)
+    found = page.collect(ws)
+    audio = next(s for s in found["shots"] if s["key"] == "02")["audio"]
+    assert (audio["f0"], audio["channel_gap"], audio["noise_floor"]) == (95, 0.4, None)
+    assert found["limits"] == {"f0_max": 97, "channel_gap_max": None, "noise_floor_max": -50}
+    data["rules"] = {"no_such_rule": 1}  # 规则写错了：页面照样建，只是不标超限
+    ws.save(data)
+    assert page.collect(ws)["limits"] == {}
+
+
 def test_stale_video_is_flagged(ws):
     put(ws, ".wrally/video/02.mp4")
 
@@ -401,3 +449,23 @@ def test_without_page_section_the_manifest_video_is_shown(ws, tmp_path_factory):
     data["page"] = False
     ep1.save(data)
     assert shot(ep1, "01")["replaced"] is None
+
+
+def test_ref_assets_from_previews_and_other_episodes(ws, tmp_path_factory):
+    """写媒资 ID 的参考图：page.previews 登记的预览图优先，其次这一集、再次同一项目别的集下载过的。"""
+    root, (ep1, ep2) = project_with(ws, tmp_path_factory)
+    (root / "wrally.yaml").write_text(
+        "title: 示例片\nref_assets: {人物: c1, 马车: k9, 门: remote1}\n"
+        "page: {previews: {c1: assets/定稿/人物.png, remote1: assets/没有.png}}\n",
+        encoding="utf-8",
+    )
+    put(ep2, "../assets/定稿/人物.png")
+    edit(ep1, "01", lambda e: e.update(keyframe={"candidates": flow_seq(["k8", "k9"])}))
+    put(ep1, ".wrally/keyframes/01/B.png")
+    edit(ep2, "02", lambda e: e.update(keyframe={"refs": flow_seq(["人物", "马车", "门"])}))
+    refs = {r["name"]: r for r in shot(ep2, "02")["keyframe"]["refs"]}
+    assert refs["人物"]["kind"] == "asset" and refs["人物"]["src"].startswith("../assets/%E5%AE%9A%E7%A8%BF/")
+    assert refs["马车"]["src"].startswith("../ep1/.wrally/keyframes/01/B.png?v=")  # 别的集下载过
+    assert refs["门"]["src"] is None  # 登记的预览图不在
+    # 预览图换了，--watch 也要发现
+    assert any("人物.png" in p for p, _ in page.signature(ep2))
