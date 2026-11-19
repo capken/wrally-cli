@@ -1,6 +1,6 @@
 ---
 name: prove-submit-once
-description: 穷举检查 wrally video gen 的提交、中断恢复和 wait / fetch 的状态回写：任意顺序的超时、断网、进程被杀、重跑之下，会不会重复提交（多花额度），会不会把旧视频记成用新输入做好的。改了 commands/video.py、commands/wait.py、commands/fetch.py、api/results.py 里和 status、made_from、results_before、failed_before、submitting 有关的逻辑之后，或者要把同样的幂等改动同步到 keyframe gen、audio gen 之前，先跑它。
+description: 穷举检查 wrally video gen 的提交、中断恢复和 wait / fetch 的状态回写：任意顺序的超时、断网、进程被杀、重跑之下，会不会重复提交（多花额度），会不会把旧视频记成用新输入做好的。改了 commands/shot_gen.py、commands/video.py、commands/wait.py、commands/fetch.py、api/results.py 里和 status、made_from、results_before、failed_before、submitting 有关的逻辑之后，先跑它。
 ---
 
 # 穷举检查：视频提交不重复、done 不说谎
@@ -21,7 +21,8 @@ description: 穷举检查 wrally video gen 的提交、中断恢复和 wait / fe
 
 | 文件 | 函数或片段 |
 | --- | --- |
-| `src/wrally/commands/video.py` | `gen` 里的分类（`todo` / `recover`）、恢复时的 `rs.doing > 0 or rs.done > results_before`、落盘 `submitting`、提交后写 `running`；`fingerprint`、`shot_settings` |
+| `src/wrally/commands/shot_gen.py` | `classify`（`todo` / `recover`）、`inspect_and_recover`（`rs.doing > 0 or rs.done > results_before`）、`mark_submitting`、`record_batch_submit` |
+| `src/wrally/commands/video.py` | `gen`、`fingerprint`、`shot_settings` |
 | `src/wrally/commands/wait.py` | `wait` 里的 `pending`、`baseline`、最后给每镜定 `label` 并写回 `status` 的那一段（含 `unconfirmed` 分支） |
 | `src/wrally/commands/fetch.py` | `awaited`（拿提交时的基线判断这次任务留下了什么）、`fetch`、`_media`（写 `status`、`asset_id`、`file`） |
 | `src/wrally/api/results.py` | `ResultSet.state`、`get_results` |
@@ -94,7 +95,7 @@ OK: matches the 4 known finding(s); everything else holds within the bound
 
 没查的：
 
-- `keyframe gen`、`audio gen`、`gen`、`video upscale`。它们的骨架是各写一份的，这里的结论不能搬过去。
+- `keyframe gen`、`audio gen` 各自的前置检查/配置写入与画布分支，以及 `gen`、`video upscale`（`keyframe gen` 和 `audio gen` 的幂等骨架已和 `video gen` 收口到 `commands/shot_gen.py`，但这个检查器只驱动 `video gen`）。
 - 多镜一起提交、服务端跳过个别镜头（`skipped_by_server`）、`--redo`、`--dry-run`、首尾帧。
 - 探索途中改输入；`status` 是 `submitting` 时改了输入再跑 `video gen`（代码会不问远端直接提交）。
 - 有人同时在网页上生成；两个 wrally 进程同时跑。

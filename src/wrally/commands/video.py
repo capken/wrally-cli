@@ -9,42 +9,30 @@
 
 import hashlib
 import json
-import time
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 
 import httpx2
 
 from wrally.api import shots as shots_api
-from wrally.api.results import get_results
 from wrally.api.video import VideoSettings, configure, submit_video
-from wrally.commands.common import for_each, is_skipped, load_manifest, remember_web_copies, section, select
+from wrally.commands.common import load_manifest, select
+from wrally.commands.shot_gen import (
+    HEADERS,
+    GenReport,
+    classify,
+    inspect_and_recover,
+    join_keys,
+    mark_submitting,
+    record_batch_submit,
+    skip_marked,
+)
 from wrally.commands.verify import same_assets
-from wrally.errors import PreflightError, WrallyError
+from wrally.errors import PreflightError
 from wrally.prompts import composed, load_styles
 from wrally.transport.client import McpClient
 from wrally.workspace import Workspace
 
-HEADERS = ("shot", "status", "detail")
-
-
-@dataclass
-class GenReport:
-    rows: list[tuple[str, ...]] = field(default_factory=list)
-    submitted: list[str] = field(default_factory=list)
-    failed: int = 0
-    noun: str = "video"
-    dry_run: bool = False
-    notes: list[str] = field(default_factory=list)
-
-    @property
-    def summary(self) -> str:
-        skipped = sum(r[1] == "skipped" for r in self.rows)
-        tail = f", {skipped} skipped" if skipped else ""
-        tail += f", {self.failed} failed" if self.failed else ""
-        if self.dry_run:
-            would = [r[0] for r in self.rows if r[1] == "would submit"]
-            return f"dry run: would submit {len(would)} {self.noun} tasks  ({' '.join(would) or '-'}){tail}"
-        return f"submitted {len(self.submitted)} {self.noun} tasks  ({' '.join(self.submitted) or '-'}){tail}"
+__all__ = ["HEADERS", "GenReport", "fingerprint", "gen", "last_frame", "shot_settings", "video_settings"]
 
 
 def video_settings(defaults: dict) -> VideoSettings:
@@ -92,10 +80,6 @@ def fingerprint(asset_id: str, prompt: str, settings: VideoSettings, last: str |
     return hashlib.sha1(payload.encode()).hexdigest()[:12]
 
 
-def _keys(entries: list[dict]) -> str:
-    return ",".join(str(e["key"]) for e in entries)
-
-
 async def gen(
     ws: Workspace,
     client: McpClient,
@@ -107,23 +91,21 @@ async def gen(
     http: httpx2.AsyncClient | None = None,
 ) -> GenReport:
     data = load_manifest(ws)
-    entries = select(data, spec)
+    selected = select(data, spec)
     styles = load_styles(ws, data)
     settings = video_settings(ws.settings(data, "defaults"))
     series_id, project_id = data["series_id"], data["project_id"]
     report = GenReport()
-    for e in [e for e in entries if is_skipped(e, "video")]:
-        report.rows.append((str(e["key"]), "skipped", "marked skip in episode.yaml"))
-    entries = [e for e in entries if not is_skipped(e, "video")]
+    entries = skip_marked(selected, "video", report)
 
     # —— 本地前置检查 ——
     no_pick = [e for e in entries if not (e.get("keyframe") or {}).get("asset_id")]
     if no_pick:
-        raise PreflightError("missing_asset_id", f"({_keys(no_pick)}; run: wrally keyframe pick)")
+        raise PreflightError("missing_asset_id", f"({join_keys(no_pick)}; run: wrally keyframe pick)")
     prompts = {str(e["key"]): composed(ws, styles, e, "anim") for e in entries}
     no_prompt = [e for e in entries if not (prompts[str(e["key"])] or "").strip()]
     if no_prompt:
-        raise PreflightError("missing_anim_prompt", f"({_keys(no_prompt)})")
+        raise PreflightError("missing_anim_prompt", f"({join_keys(no_prompt)})")
     per_shot = {str(e["key"]): shot_settings(settings, e) for e in entries}
     prints = {
         str(e["key"]): fingerprint(
@@ -132,74 +114,27 @@ async def gen(
         for e in entries
     }
 
-    todo, recover = [], []
-    for e in entries:
-        key = str(e["key"])
-        video = e.get("video") or {}
-        state, same = video.get("status"), video.get("made_from") == prints[key]
-        if redo:
-            todo.append(e)
-        elif state == "submitting" and same:
-            recover.append(e)  # 上次在提交途中被打断，先问远端
-        elif state in ("running", "done") and same:
-            report.rows.append((key, "skipped", f"{state}, inputs unchanged"))
-        elif state == "running":
-            report.rows.append((key, "skipped", "another task is running; wait for it first"))
-        elif state == "done" and not video.get("made_from"):
-            report.rows.append((key, "skipped", "done, made outside wrally (--redo to regenerate)"))
-        else:
-            todo.append(e)
-    if dry_run:
-        # 只做本地判断：列出会提交哪些镜头，不调用远端
-        report.dry_run = True
-        report.rows += [(str(e["key"]), "would submit", "") for e in todo]
-        report.rows += [(str(e["key"]), "would check", "interrupted run; remote decides") for e in recover]
-        return report
-    if not todo and not recover:
+    todo, recover = classify(entries, prints, "video", report, redo=redo, dry_run=dry_run)
+    if dry_run or (not todo and not recover):
         return report
 
-    # —— 远端前置检查 ——
-    remote = {
-        s.story_id: s for s in await shots_api.shot_list(client, series_id, project_id, ws.raw_dir, "video")
-    }
-    remember_web_copies(ws, remote.values())
-    gone = [e for e in todo + recover if e["story_id"] not in remote]
-    if gone:
-        raise PreflightError("missing_on_remote", f"({_keys(gone)})")
-
-    async def count(entry: dict):
-        return await get_results(
-            client, entry["story_id"], "video", ws.raw_dir / f"{entry['key']}-video-before.json"
-        )
-
-    counts = dict(
-        zip([str(e["key"]) for e in todo + recover], await for_each(todo + recover, count), strict=True)
-    )
-    broken = [k for k, c in counts.items() if isinstance(c, WrallyError)]
-    if broken:
-        raise PreflightError("cannot_read_results", f"({','.join(broken)})")
-    for e in recover:
-        key, video = str(e["key"]), section(e, "video")
-        rs = counts[key]
-        if rs.doing > 0 or rs.done > int(video.get("results_before") or 0):
-            video["status"] = "running" if rs.doing > 0 else "done"
-            report.rows.append((key, "skipped", "already submitted by an interrupted run"))
-        else:
-            todo.append(e)
-    todo.sort(key=lambda e: [str(x["key"]) for x in entries].index(str(e["key"])))
-    if not todo:
-        ws.save(data)
+    # —— 远端前置检查与中断恢复 ——
+    state = await inspect_and_recover(ws, client, data, entries, todo, recover, "video", report)
+    if not state.todo:
         return report
+    remote, counts, todo = state.remote, state.counts, state.todo
 
     unpushed = [
         e for e in todo if remote[e["story_id"]].animation_prompt.strip("\n") != prompts[str(e["key"])]
     ]
     if unpushed:
-        raise PreflightError("unpushed_prompts", f"({_keys(unpushed)}; run: wrally push)")
+        raise PreflightError("unpushed_prompts", f"({join_keys(unpushed)}; run: wrally push)")
     # 在网页上保存过的镜头另有一份动画提示词，场次生视频用的是那一份，edit_content 改不到它
     stale_web = [e for e in todo if remote[e["story_id"]].rich_anim_differs(prompts[str(e["key"])])]
     if stale_web:
-        raise PreflightError("stale_web_prompt", f"({_keys(stale_web)}; paste the anim prompt on the web)")
+        raise PreflightError(
+            "stale_web_prompt", f"({join_keys(stale_web)}; paste the anim prompt on the web)"
+        )
 
     # 网页上的选用被人改过，和清单对不上：中止，不替人决定用哪张
     suspects = []
@@ -213,7 +148,7 @@ async def gen(
         verdicts = await same_assets(ws, client, [(a, b) for _, a, b in suspects], http)
         conflicts = [e for e, a, b in suspects if verdicts[(a, b)] is not True]
         if conflicts:
-            raise PreflightError("pick_conflict", f"({_keys(conflicts)}; run: wrally verify-picks)")
+            raise PreflightError("pick_conflict", f"({join_keys(conflicts)}; run: wrally verify-picks)")
 
     # —— 逐镜写配置 → 回读核对 ——
     items = [(str(e["key"]), e["story_id"], e["keyframe"]["asset_id"], last_frame(e)) for e in todo]
@@ -243,40 +178,12 @@ async def gen(
         != ("FirstLastFrame" if last_frame(e) else "Text")
     ]  # fmt: skip
     if wrong:
-        raise PreflightError("config_not_applied", f"({_keys(wrong)})")
+        raise PreflightError("config_not_applied", f"({join_keys(wrong)})")
 
     # —— 提交：先落盘 submitting，再发请求，成功后立刻记下任务 ID ——
-    for e in ready:
-        key, video = str(e["key"]), section(e, "video")
-        video.pop("task", None)
-        video["status"] = "submitting"
-        video["made_from"] = prints[key]
-        video["results_before"] = counts[key].done
-        video["failed_before"] = counts[key].failed
-    ws.save(data)
-    result = await submit_video(
-        client, project_id, series_id, [e["story_id"] for e in ready], ws.raw_dir / "video-submit.json"
-    )
-    skipped = json.dumps(result["skipped"], ensure_ascii=False)
-    accepted = [e for e in ready if e["story_id"] not in skipped]
-    tasks = result["task_ids"] if len(result["task_ids"]) == len(accepted) else [None] * len(accepted)
-    stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
-    for e in ready:
-        key, video = str(e["key"]), section(e, "video")
-        if e not in accepted:
-            video["status"] = "failed"
-            report.failed += 1
-            report.rows.append(
-                (key, "error: skipped_by_server", f"(raw: {ws.raw_dir / 'video-submit.json'})")
-            )
-            continue
-        video["status"] = "running"
-        video["submitted_at"] = stamp
-        task = tasks[accepted.index(e)]
-        if task:
-            video["task"] = task
-        report.submitted.append(key)
-        report.rows.append((key, "submitted", str(task or "")))
-    ws.save(data)
+    mark_submitting(ws, data, ready, "video", prints, counts)
+    raw = ws.raw_dir / "video-submit.json"
+    result = await submit_video(client, project_id, series_id, [e["story_id"] for e in ready], raw)
+    record_batch_submit(ws, data, ready, "video", result, raw, report)
     report.rows.sort(key=lambda r: not r[1].startswith("error"))
     return report

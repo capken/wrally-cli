@@ -58,7 +58,7 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 
 不涉及远端的辅助模块：`media.py`（图像比对、抽帧、音高）、`output.py`（表格和输出预算）。
 
-命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` `serve` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`，`video upscale` 在 `upscale.py`（接口层 `api/canvas.py` 的 `upscale_options`、`submit_upscale`）；`audio gen` 在 `audio.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`；`projects`（列表）和 `projects create` 在 `projects.py`（接口层 `api/projects.py`）；`shots rm/order` 在 `shots.py`（接口层 `api/shots.py` 的 `delete_shots`、`sort_shots`）；`upload` 和「本地路径 → 媒资 ID」在 `upload.py`（接口层 `api/upload.py`，不调远端的判断和指纹在 `localfile.py`）。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
+命令与模块的对应：`new` `pull` `push` `fetch` `wait` `status` `check` `lint` `export` `page` `serve` 各一个同名文件；`verify-picks` 在 `verify.py`；`keyframe pick/sheet` 在 `keyframe.py`，`keyframe gen` 在 `keyframe_gen.py`；`video gen` 在 `video.py`，`video upscale` 在 `upscale.py`（接口层 `api/canvas.py` 的 `upscale_options`、`submit_upscale`）；`audio gen` 在 `audio.py`；三类场次生成命令共用的幂等分类、远端恢复、落盘 `submitting` 和批量提交回写在 `shot_gen.py`；`gen image|video|audio|music|fetch` 在 `gen.py`（接口层 `api/canvas.py`），`models` 直接在 `cli.py`；`projects`（列表）和 `projects create` 在 `projects.py`（接口层 `api/projects.py`）；`shots rm/order` 在 `shots.py`（接口层 `api/shots.py` 的 `delete_shots`、`sort_shots`）；`upload` 和「本地路径 → 媒资 ID」在 `upload.py`（接口层 `api/upload.py`，不调远端的判断和指纹在 `localfile.py`）。`smoke` 在 `smoke.py`，复用 `gen.py` 的提交、等待和下载。`commands/common.py` 放镜头选择、并发执行、清单小节的读写。
 
 ## 写任何命令都要满足的约束
 
@@ -121,7 +121,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 
 **生成命令**
 
-- 三个生成命令（`keyframe_gen.py`、`video.py`、`audio.py`）的「分类 → 恢复 → 落盘 submitting → 提交」骨架是各写一份的，改其中一个的幂等逻辑时要同步另外两个。
+- 三个生成命令（`keyframe_gen.py`、`video.py`、`audio.py`）共用 `commands/shot_gen.py` 的「过滤 skip → 分类 → 远端恢复 → 落盘 submitting → 批量提交回写」骨架，改幂等逻辑时只改这一处，同时跑 `.claude/skills/prove-submit-once/check.py` 回归。
 - 幂等靠清单里的 `made_from`（输入指纹）。提交前先把状态落盘为 `submitting` 并记下 `results_before`、`failed_before`；`wait` 也靠这组基线判断，避免把旧结果当成新任务的结果。
 - `wait` 和 `fetch` 判断「这次的任务出没出结果」一律拿这组基线比（`fetch.awaited`），不看远端现在有没有结果：远端的结果可能是以前的。停在 `submitting` 又没有这次任务痕迹的镜头不改清单，表格里写 `unconfirmed`，留给生成命令的恢复逻辑。
 - `keyframe gen`、`video gen` 要求提示词已经 `push`；`audio gen` 自己写旁白提示词。
