@@ -53,7 +53,7 @@ uv run wrally export -C <单集目录>               # 写 .wrally/export.json�
 | --- | --- | --- |
 | 传输 | `transport/auth.py`、`client.py` | OAuth 登录与刷新；调用 MCP 工具、重试、解析、把原始返回落到 `.wrally/raw/` |
 | 接口 | `api/` | 把 WorkRally 工具包装成有类型的函数；**下载地址只在这一层流转** |
-| 命令 | `commands/`、`cli.py` | 读写清单、编排调用顺序、输出摘要 |
+| 命令 | `commands/`、`cli/` | 读写清单、编排调用顺序、输出摘要 |
 | 工作区 | `workspace.py`、`prompts.py`、`rules.py` | `episode.yaml` + `prompts/` + `styles/` + `.wrally/`，唯一的状态来源；上级目录的 `wrally.yaml` 提供各集共用的设置 |
 
 不涉及远端的辅助模块：`media.py`（图像比对、抽帧、音高）、`output.py`（表格和输出预算）。
@@ -107,8 +107,8 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 
 **进度网页**
 
-- `page` 生成单集目录下的 `page.html`（模板是 `src/wrally/page_template.html`）。会改清单或下载素材的命令都挂了 `cli.refreshes_page`，结束后自动重建；新增这类命令时也要挂上。它不能往标准输出写东西，也不能改变原命令的退出码。
-- 有项目文件时，每次重建单集页面都会顺带重建项目总览页 `index.html`（模板 `index_template.html`）。总览页只读各集的 `.wrally/page.summary.json`，卡片上要加新的数就加到 `page.summarize` 里。
+- `page` 生成单集目录下的 `page.html`（模板源在 `src/wrally/web/`：`page.html` 外壳 + `page.css` + `js/*.js`，由 `page._template` 拼回单文件 HTML）。会改清单或下载素材的命令都挂了 `cli.refreshes_page`，结束后自动重建；新增这类命令时也要挂上。它不能往标准输出写东西，也不能改变原命令的退出码。
+- 有项目文件时，每次重建单集页面都会顺带重建项目总览页 `index.html`（模板 `src/wrally/web/index.html`）。总览页只读各集的 `.wrally/page.summary.json`，卡片上要加新的数就加到 `page.summarize` 里。
 - 成片是合成脚本在 wrally 之外写的，合成完页面不会自己更新：跑一次 `wrally page`。
 - `wrally serve`（2026-11-18 加，`commands/serve.py`）用标准库的 `ThreadingHTTPServer` 只读地服务项目目录（在属于项目的单集目录里运行也一样，打开时直接到那一集；不属于项目的单集只服务它自己）。启动时把各集页面和总览页建一遍；之后收到某一集的 `page.html` 或 `.wrally/page.version.js` 的请求时，用 `page.signature` 看这一集的文件变没变，变了才重建（总览页的请求看每一集），所以开着的页面靠原来的定时轮询就能跟上手改的提示词和清单。重建失败时照旧给上次的页面，同一个错误在标准错误里只提示一次。视频要能拖动，自己实现了单段的 Range 请求（标准库不支持）。不列目录、不打请求日志；默认只监听 127.0.0.1，端口被占用时往后找 20 个；SIGTERM 和 Ctrl-C 一样退出码 0。
 - 页面内容只由输入决定，不要往里写时间戳，否则重跑会产生改动、开着的页面会不停刷新。

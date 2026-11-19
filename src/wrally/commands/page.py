@@ -13,6 +13,7 @@ import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ INDEX_VERSION = "index.version.js"  # 在项目目录的 .wrally/ 下
 MEDIA = ("keyframe", "video", "audio")
 SETTLED = ("done", "skipped")
 DATA_MARK, VERSION_MARK = "__WRALLY_DATA__", "__WRALLY_VERSION__"
+CSS_MARK, JS_MARK = "__WRALLY_CSS__", "__WRALLY_JS__"
 LABELS = {
     "none": "未开始",
     "pending": "待选图",
@@ -364,11 +366,24 @@ def summarize(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _template(name: str = "page_template.html") -> str:
-    return resources.files("wrally").joinpath(name).read_text(encoding="utf-8")
+@lru_cache(maxsize=4)
+def _template(name: str = "page.html") -> str:
+    """读取 src/wrally/web/ 下的模板；单集页把独立的 CSS 和 JS 片段拼回单文件 HTML。"""
+    web = resources.files("wrally").joinpath("web")
+    html = web.joinpath(name).read_text(encoding="utf-8")
+    if CSS_MARK in html:
+        css = web.joinpath("page.css").read_text(encoding="utf-8").rstrip("\n")
+        html = html.replace(CSS_MARK, css)
+    if JS_MARK in html:
+        scripts = sorted(
+            (p for p in web.joinpath("js").iterdir() if p.name.endswith(".js")), key=lambda p: p.name
+        )
+        body = "\n\n".join(p.read_text(encoding="utf-8").rstrip("\n") for p in scripts)
+        html = html.replace(JS_MARK, body)
+    return html
 
 
-def render(data: dict[str, Any], template: str = "page_template.html") -> tuple[str, str]:
+def render(data: dict[str, Any], template: str = "page.html") -> tuple[str, str]:
     """数据 → (网页全文, 版本号)。版本号只由内容决定，所以输入没变时重跑不产生改动。"""
     # 提示词是任意文本：转义掉 < 之后，里面的 </script> 不会把数据块截断
     payload = json.dumps(data, ensure_ascii=False, sort_keys=True).replace("<", "\\u003c")
@@ -425,7 +440,7 @@ def build_index(project_dir: Path, *, rebuild: bool = False) -> PageReport:
         cover = f"{quote(folder.name)}/{summary['cover']}" if summary.get("cover") else None
         episodes.append(summary | {"href": f"{quote(folder.name)}/{PAGE}", "cover": cover})
     title = Workspace(project_dir / "_").project().get("title") or project_dir.resolve().name
-    html, version = render({"title": str(title), "episodes": episodes}, "index_template.html")
+    html, version = render({"title": str(title), "episodes": episodes}, "index.html")
     changed = _write(project_dir / INDEX, project_dir / ".wrally" / INDEX_VERSION, html, version)
     return PageReport(shots=len(episodes), path=INDEX, changed=changed, unit="episodes")
 
