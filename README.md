@@ -30,7 +30,7 @@
   | `3` | 鉴权或网络错误 |
   | `4` | wrally 内部的意外错误。终端不输出追踪栈，追踪栈写入凭证目录下的 `last-crash.txt` |
 
-- **机器可读输出**：所有命令支持 `--json`。成功时输出一行 `{"summary": …, "rows": [...]}`，失败时输出一行 `{"error": …, "hint": …, "exit_code": …}`。
+- **机器可读输出**：所有命令支持 `--json`。成功时输出一行 `{"summary": …, "rows": [...]}`（`page`、`check`、`serve` 还会附带结构化的 `data` 字段），失败时输出一行 `{"error": …, "hint": …, "exit_code": …}`。
 
 `wrally` 不提供以下功能：
 
@@ -106,6 +106,7 @@ Agent 对单条命令通常有几分钟的执行时限，而视频生成可能�
 - 设置 `WRALLY_MAX_WAIT`，取值略小于 Agent 的执行时限。
 - 将提交与等待分开执行：
   - 单集中的生成命令（如 `video gen`）默认只提交。提交后反复运行 `wrally wait <kind> --timeout <秒>`。
+  - 视频超分（`video upscale`）默认会等待到下载完成。添加 `--no-wait` 只提交，之后重跑同一条命令接着等。
   - 单独生成命令（如 `gen video`）默认会等待到下载完成。添加 `--no-wait` 只提交，之后反复运行 `wrally gen fetch -o <目录> --timeout <秒>`。
 
   重复运行，直到输出中不再出现 `running`。
@@ -175,15 +176,16 @@ WorkBuddy 桌面端在本机执行命令，skill 格式与 Claude Code 相同（
 | 「检查一下素材」 | `wrally check`，只报告有警告的镜头 |
 | 「删掉第 7 镜」 | `wrally shots rm 07 --dry-run`，确认后正式删除（远端进回收站） |
 | 「网页上的顺序和清单不一样」 | `wrally shots order --dry-run`，确认后执行 |
-| 「把这张图传上去当参考图」 | `wrally upload art/公主.png`，或直接在清单的 `ref_assets` 里写本地路径 |
+| 「把这张图传上去当参考图」 | `wrally upload art/角色.png`，或直接在清单的 `ref_assets` 里写本地路径 |
+| 「在浏览器里看进度」 | `wrally serve --open`（本机网页服务，总览页与各集三栏页面，改动自动刷新） |
 | 「用 WorkRally 生成一段配音」 | `wrally gen audio … --dry-run` |
 | 「测一下生成接口能不能用」 | `wrally smoke --dry-run`，确认后运行 `wrally smoke`，依次生成图像、配音和 5 秒视频并检查文件 |
 
 以下操作会产生实际影响：
 
-- 生成类命令（`keyframe gen`、`video gen`、`audio gen`、`gen`、`smoke`）消耗真实额度。
+- 生成类命令（`keyframe gen`、`video gen`、`video upscale`、`audio gen`、`gen`、`smoke`）消耗真实额度。
 - `push` 覆盖远端的提示词。
-- `new` 在远端创建剧集和场次。
+- `projects create` 和 `new` 在远端创建项目、剧集和场次。
 - `shots rm` 删除远端场次（进回收站），`shots order` 改网页上的场次顺序。
 
 使用说明要求 Agent 对这些操作先运行 `--dry-run`，向用户说明将要执行的操作，经确认后再执行。选图始终由用户决定。
@@ -192,15 +194,15 @@ WorkBuddy 桌面端在本机执行命令，skill 格式与 Claude Code 相同（
 
 | 步骤 | 命令 |
 | --- | --- |
-| 建档 | `wrally new --shots 00-11,99 --name "EP5 …"`；或拉取已有剧集：`wrally pull --series <ID>` |
+| 建档 | `wrally new --shots 00-11,99 --name "EP5 …"`（支持子镜号如 `13a,13b`）；或拉取已有剧集：`wrally pull --series <ID>` |
 | 编写提示词和台词 | 编辑 `prompts/*.md` 和清单中的 `narration`，然后运行 `wrally lint`、`wrally push` |
-| 关键帧 | `wrally keyframe gen --wait --fetch`；查看 `.wrally/sheets/` 中的对比图后运行 `wrally keyframe pick 02 A 03 B …` |
-| 视频 | `wrally video gen --wait --fetch` |
+| 关键帧 | `wrally keyframe gen --wait --fetch`；查看 `.wrally/sheets/` 中的对比图后运行 `wrally keyframe pick 02 A 03 B …`（加 `--last` 选尾帧，走首尾帧模式） |
+| 视频 | `wrally video gen --wait --fetch`；需要提升清晰度时可再跑 `wrally video upscale` |
 | 旁白 | `wrally audio gen --wait --fetch` |
 | 检查 | `wrally check`。需要返修时，修改提示词或台词，再用 `--shots` 重新运行对应的生成命令 |
-| 合成 | `wrally export`，运行本片的合成脚本，然后运行 `wrally page` 更新进度网页 |
+| 合成与浏览 | `wrally export`，运行本片的合成脚本，然后运行 `wrally page` 或 `wrally serve --open` 在浏览器查看进度与成片 |
 
-`--shots` 支持 `all`、`02,05`、`02-07` 三种写法。所有命令均支持 `--json`。查看命令选项使用 `wrally <命令> --help`。
+`--shots` 支持 `all`、`02,05`、`02-07`（按清单顺序切片，兼容子镜号和大镜号）。所有命令均支持 `--json`。查看命令选项使用 `wrally <命令> --help`。
 
 ## 开发
 
