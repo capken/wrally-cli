@@ -15,10 +15,11 @@ import time
 
 import httpx2
 
+from wrally.api import canvas as canvas_api
 from wrally.api import shots as shots_api
-from wrally.api.image import canvas_generate, submit_images
+from wrally.api.image import submit_images
 from wrally.commands import upload as upload_cmd
-from wrally.commands.common import flow_seq, load_manifest, section, select
+from wrally.commands.common import error_cell, flow_seq, load_manifest, section, select
 from wrally.commands.push import image_config
 from wrally.commands.shot_gen import (
     HEADERS,
@@ -30,7 +31,7 @@ from wrally.commands.shot_gen import (
     record_batch_submit,
     skip_marked,
 )
-from wrally.errors import PreflightError, ToolError
+from wrally.errors import AuthError, NetworkError, PreflightError, ToolError, WrallyError
 from wrally.prompts import composed, load_styles
 from wrally.transport.client import McpClient
 from wrally.workspace import Workspace
@@ -159,11 +160,11 @@ async def gen(
         if wrong:
             raise PreflightError("config_not_applied", f"({join_keys(wrong)})")
 
-    # —— 提交：先落盘 submitting，再发请求，成功后立刻记下任务 ID ——
-    mark_submitting(ws, data, todo, "keyframe", prints, counts, task_key="tasks")
+    # —— 提交：普通镜头先整批落盘 submitting 再提交；画布镜头先换地址，再逐镜落盘 submitting 并提交 ——
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
 
     if plain:
+        mark_submitting(ws, data, plain, "keyframe", prints, counts, task_key="tasks")
         raw = ws.raw_dir / "keyframe-submit.json"
         result = await submit_images(
             client, project_id, series_id, [e["story_id"] for e in plain], config["count"], raw
@@ -184,20 +185,39 @@ async def gen(
     for e in canvas:
         key, kf = str(e["key"]), section(e, "keyframe")
         raw = ws.raw_dir / f"{key}-keyframe-canvas.json"
+        # 先换好参考图地址再落盘 submitting：这一步失败时还没提交任何任务，不留 submitting
         try:
-            tasks = await canvas_generate(
+            request = await canvas_api.prepare(
                 client,
-                prompt=prompts[key],
-                model=config["model"],
-                ref_asset_ids=refs[key],
+                "image",
+                {
+                    "prompt": prompts[key],
+                    "model": config["model"],
+                    "refs": refs[key],
+                    "name": f"{data.get('title') or 'wrally'}_{key}",
+                    "count": config["count"],
+                    "aspect": config.get("aspectRatio"),
+                    "resolution": config.get("resolution"),
+                },
                 project_id=project_id,
-                name=f"{data.get('title') or 'wrally'}_{key}",
-                count=config["count"],
-                aspect=config.get("aspectRatio"),
-                resolution=config.get("resolution"),
-                raw_path=raw,
                 http=http,
             )
+        except AuthError:
+            raise
+        except WrallyError as err:
+            report.failed += 1
+            report.rows.append((key, error_cell(err), ""))
+            continue
+        kf.pop("tasks", None)
+        mark_submitting(ws, data, [e], "keyframe", prints, counts, task_key="canvas_tasks")
+        try:
+            tasks = await canvas_api.submit(client, request, raw_path=raw)
+        except AuthError:
+            raise
+        except NetworkError as err:
+            report.failed += 1  # 不知道服务端是否已受理：停在 submitting，不中断后续镜头
+            report.rows.append((key, f"error: {err.code}", "may have been accepted; check WorkRally"))
+            continue
         except ToolError as err:
             kf["status"] = "failed"
             report.failed += 1

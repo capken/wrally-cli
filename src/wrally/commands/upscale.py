@@ -23,8 +23,8 @@ import httpx2
 
 from wrally.api import canvas
 from wrally.api.assets import download_assets
-from wrally.api.image import canvas_task
-from wrally.commands.common import is_skipped, load_manifest, section, select
+from wrally.api.image import CanvasTask, canvas_task
+from wrally.commands.common import error_cell, for_each, is_skipped, load_manifest, section, select
 from wrally.errors import AuthError, NetworkError, PreflightError, WrallyError
 from wrally.transport.client import McpClient
 from wrally.workspace import Workspace
@@ -155,22 +155,21 @@ async def upscale(
         report.rows += [(str(e["key"]), "would submit", "") for e in todo]
         return report
 
-    # 先全部落盘 submitting，再逐镜提交，每镜受理后立刻写回
+    # 逐镜落盘 submitting 后再提交，受理后立刻写回：中途出错或中断不会把还没提交的镜头标成 submitting
+    title = str(data.get("title") or ws.root.resolve().name)
     for e in todo:
+        key = str(e["key"])
         video = section(e, "video")
         source = str(video["asset_id"])
-        video["upscaled"] = {
+        up = {
             "made_from": fingerprint(source, model_id, scale),
             "source": source,
             "model": model_id,
             "scale": scale,
             "status": "submitting",
         }
-    if todo:
+        video["upscaled"] = up
         ws.save(data)
-    title = str(data.get("title") or ws.root.resolve().name)
-    for e in todo:
-        key, up = str(e["key"]), e["video"]["upscaled"]
         raw = ws.raw_dir / f"{key}-upscale-submit.json"
         try:
             tasks = await canvas.submit_upscale(
@@ -220,31 +219,46 @@ async def collect(
     report = Report()
     started = clock()
 
+    poll_errors: dict[str, str] = {}
+
     def ups(state: str) -> list[tuple[dict, dict]]:
         return [(e, e["video"]["upscaled"]) for e in entries if e["video"]["upscaled"].get("status") == state]
 
+    def active() -> list[tuple[dict, dict]]:
+        return [(e, up) for e, up in ups("running") if up.get("task") and str(e["key"]) not in poll_errors]
+
+    async def query(item: tuple[dict, dict]) -> CanvasTask:
+        e, up = item
+        raw = ws.raw_dir / f"{e['key']}-upscale-task.json"
+        return await canvas_task(client, str(up["task"]), data.get("project_id"), raw_path=raw)
+
     async def poll() -> None:
-        for e, up in ups("running"):
-            if not up.get("task"):
-                continue
-            raw = ws.raw_dir / f"{e['key']}-upscale-task.json"
-            got = await canvas_task(client, str(up["task"]), data.get("project_id"), raw_path=raw)
-            if got.state == "done" and got.asset_ids:
+        targets = active()
+        if not targets:
+            return
+        changed = False
+        for (e, up), got in zip(targets, await for_each(targets, query), strict=True):
+            if isinstance(got, WrallyError):
+                poll_errors[str(e["key"])] = error_cell(got)
+            elif got.state == "done" and got.asset_ids:
                 up["status"], up["asset_id"] = "done", got.asset_ids[0]
                 up.pop("error", None)
+                changed = True
             elif got.state != "running":
                 up["status"] = "failed"
                 up["error"] = got.error or "no_asset"
+                changed = True
+        if changed:
+            ws.save(data)
 
     await poll()
-    if ups("running"):
+    if active():
         await sleep(min(INITIAL, max(0.0, timeout - (clock() - started))))
         while True:
             await poll()
-            if not ups("running") or clock() - started >= timeout:
+            if not active() or clock() - started >= timeout:
                 break
             await sleep(min(INTERVAL, max(0.0, timeout - (clock() - started))))
-    ws.save(data)
 
     def downloaded(up: dict) -> bool:
         return bool(up.get("file")) and (ws.root / str(up["file"])).is_file()
@@ -264,7 +278,10 @@ async def collect(
     for e in entries:
         key, up = str(e["key"]), e["video"]["upscaled"]
         state = up.get("status")
-        if state == "running":
+        if key in poll_errors:
+            report.failed += 1
+            report.rows.append((key, poll_errors[key], str(up.get("task") or "")))
+        elif state == "running":
             report.timed_out += 1
             report.rows.append((key, "running", str(up.get("task") or "")))
         elif state == "failed":

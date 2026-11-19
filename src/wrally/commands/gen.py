@@ -11,7 +11,6 @@
 
 import hashlib
 import json
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,10 +21,12 @@ import httpx2
 
 from wrally.api import canvas
 from wrally.api.assets import download_assets
-from wrally.api.image import canvas_task
+from wrally.api.image import CanvasTask, canvas_task
 from wrally.commands import upload as upload_cmd
+from wrally.commands.common import error_cell, for_each
 from wrally.errors import NetworkError, PreflightError, WrallyError
 from wrally.transport.client import McpClient
+from wrally.workspace import write_atomic
 
 LOG = ".wrally-gen.json"
 RAW = ".wrally-gen-raw"
@@ -53,13 +54,7 @@ def load_log(out: Path) -> list[dict]:
 
 
 def save_log(out: Path, jobs: list[dict]) -> None:
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / LOG
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(
-        json.dumps({"version": 1, "jobs": jobs}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
-    )
-    os.replace(tmp, path)  # 原子替换：中断不会留下半份记录
+    write_atomic(out / LOG, json.dumps({"version": 1, "jobs": jobs}, ensure_ascii=False, indent=1) + "\n")
 
 
 def fingerprint(kind: str, params: dict, project_id: str | None) -> str:
@@ -247,24 +242,37 @@ async def fetch(
     else:  # 点名的记录即使已经下载完也列出来，方便重跑时看到文件
         chosen = [j for j in jobs if j["id"] in job_ids and j["state"] in ("submitted", "done")]
     report = Report()
+    poll_errors: dict[int, str] = {}
     deadline = time.monotonic() + timeout
+
+    async def query(item: tuple[dict, dict]) -> CanvasTask:
+        job, task = item
+        raw = out / RAW / f"{job['id']}-task-{task['task_id']}.json"
+        return await canvas_task(client, task["task_id"], job.get("project_id"), raw_path=raw)
+
     while True:
-        running = [(j, t) for j in chosen for t in j["tasks"] if t["state"] == "running"]
-        for job, task in running:
-            raw = out / RAW / f"{job['id']}-task-{task['task_id']}.json"
-            got = await canvas_task(client, task["task_id"], job.get("project_id"), raw_path=raw)
-            if got.state == "done":
-                task["state"] = "done"
-                task["asset_id"] = got.asset_ids[0] if got.asset_ids else None
-                if not task["asset_id"]:
-                    task["state"] = "failed"
-                    task["error"] = "no_asset"
-            elif got.state == "failed":
-                task["state"] = "failed"
-                task["error"] = got.error
+        running = [
+            (j, t) for j in chosen for t in j["tasks"] if t["state"] == "running" and id(t) not in poll_errors
+        ]
         if running:
-            save_log(out, jobs)
-        if not any(t["state"] == "running" for j in chosen for t in j["tasks"]):
+            changed = False
+            for (_job, task), got in zip(running, await for_each(running, query), strict=True):
+                if isinstance(got, WrallyError):
+                    poll_errors[id(task)] = error_cell(got)
+                elif got.state == "done":
+                    task["state"] = "done"
+                    task["asset_id"] = got.asset_ids[0] if got.asset_ids else None
+                    if not task["asset_id"]:
+                        task["state"] = "failed"
+                        task["error"] = "no_asset"
+                    changed = True
+                elif got.state == "failed":
+                    task["state"] = "failed"
+                    task["error"] = got.error
+                    changed = True
+            if changed:
+                save_log(out, jobs)
+        if not any(t["state"] == "running" and id(t) not in poll_errors for j in chosen for t in j["tasks"]):
             break
         if time.monotonic() >= deadline:
             break
@@ -291,7 +299,10 @@ async def fetch(
         ):
             job["state"] = "done" if any(t["state"] == "done" for t in job["tasks"]) else "failed"
         for task in job["tasks"]:
-            if task["state"] == "running":
+            if id(task) in poll_errors:
+                report.failed += 1
+                report.rows.append((job["id"], poll_errors[id(task)], "-"))
+            elif task["state"] == "running":
                 report.timed_out += 1
                 report.rows.append((job["id"], "running", "-"))
             elif task["state"] == "failed":

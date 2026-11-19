@@ -256,3 +256,40 @@ async def test_preset_voice_refuses_a_narration_template(preset):
     with pytest.raises(PreflightError) as e:
         await run(ws, remote, "02")
     assert e.value.code == "template_with_preset" and remote.calls == []
+
+
+async def test_network_error_during_voice_bind_only_fails_that_shot(ready, monkeypatch):
+    """bind_asset 某镜断网时只失败那一镜，其余镜头继续提交；plain_url 断网也不直接崩溃。"""
+    import httpx2
+
+    from wrally.api import assets
+
+    ws, remote = ready
+    monkeypatch.setattr(assets, "RETRY_DELAYS", (0,))
+    edit(
+        ws,
+        defaults=ws.load()["defaults"]
+        | {"audio": {"model": "aud1", "voice_asset": "voice2", "voice_name": "新音色"}},
+    )
+    orig_call = remote.call
+
+    async def flaky_bind(tool, arguments, **kw):
+        if tool == "shotlist_manage" and arguments.get("action") == "bind_asset":
+            if arguments["binding"]["story_id"] == "s01":
+                raise NetworkError(hint="bind timeout")
+        return await orig_call(tool, arguments, **kw)
+
+    monkeypatch.setattr(remote, "call", flaky_bind)
+    report = await run(ws, remote, "01,02")
+    assert report.submitted == ["02"] and report.failed == 1
+    assert report.rows[0][:2] == ("01", "error: network_error")
+    assert remote.submissions == [["s02"]]
+
+    # plain_url 换地址抛 NetworkError：收成单镜错误，不外泄异常
+    def dead_http(request):
+        raise httpx2.ConnectTimeout("timed out", request=request)
+
+    monkeypatch.setattr(remote, "call", orig_call)
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(dead_http)) as http:
+        report2 = await gen(ws, remote, "01", http=http)
+    assert report2.failed == 1 and report2.rows[0][:2] == ("01", "error: network_error")

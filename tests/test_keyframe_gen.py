@@ -266,3 +266,46 @@ async def test_push_cannot_update_the_web_copy_and_says_so(ready):
     with pytest.raises(PreflightError) as e:
         await run(ws, remote)
     assert e.value.code == "stale_web_prompt" and remote.submissions == []
+
+
+async def test_plain_submit_failure_does_not_mark_canvas_shots_submitting(recap):
+    """普通镜头批量提交超时时，尚未开始提交的画布镜头不能被提前标成 submitting。"""
+    ws, remote = recap
+    remote.submit_outcome = "timeout"
+    with pytest.raises(NetworkError):
+        await run(ws, remote, "01,99")
+    assert entry(ws, "01")["keyframe"]["status"] == "submitting"
+    assert "status" not in (entry(ws, "99").get("keyframe") or {})
+
+
+async def test_canvas_prepare_failure_does_not_mark_submitting_and_continues(recap):
+    """画布镜头在换参考图地址阶段失败（如媒资不存在）时不留 submitting，也不中断后续镜头。"""
+    ws, remote = recap
+    edit(ws, ref_assets={"坏图": "ghost"})
+    edit(ws, "00", keyframe={"refs": ["坏图"]})
+    report = await run(ws, remote, "00,99")
+    assert report.submitted == ["99"] and report.failed == 1
+    assert report.rows[0][0] == "00" and "ref_asset_not_found" in report.rows[0][1]
+    assert "status" not in (entry(ws, "00").get("keyframe") or {})
+    assert entry(ws, "99")["keyframe"]["status"] == "running"
+
+
+async def test_canvas_submit_timeout_only_leaves_that_shot_submitting(recap, monkeypatch):
+    """画布逐镜提交时，一镜超时停在 submitting，后续镜头不受影响仍可提交。"""
+    ws, remote = recap
+    edit(ws, "00", keyframe={"refs": ["02"]})
+    orig_call = remote.call
+    first = [True]
+
+    async def timeout_first(tool, arguments, **kw):
+        if tool == "canvas_generate_image" and first[0]:
+            first[0] = False
+            raise NetworkError(hint="timeout")
+        return await orig_call(tool, arguments, **kw)
+
+    monkeypatch.setattr(remote, "call", timeout_first)
+    report = await run(ws, remote, "00,99")
+    assert report.submitted == ["99"] and report.failed == 1
+    assert report.rows[0][:2] == ("00", "error: network_error")
+    assert entry(ws, "00")["keyframe"]["status"] == "submitting"
+    assert entry(ws, "99")["keyframe"]["status"] == "running"

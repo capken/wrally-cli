@@ -6,6 +6,7 @@ wrally 不认识的小节也按同样的办法合并，由 export 原样带出�
 
 import io
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,20 @@ def to_yaml(data: Any) -> str:
     return buf.getvalue()
 
 
+def write_atomic(path: Path, text: str, *, mode: int = 0o666) -> None:
+    """原子写文件：先写同目录唯一临时文件再替换，避免中断留下半个文件或并发写撞同一个临时文件。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def write_if_changed(path: Path, text: str) -> bool:
     """内容相同就不写，保证重跑不产生改动。原子替换，避免中断留下半个文件。"""
     try:
@@ -69,10 +84,7 @@ def write_if_changed(path: Path, text: str) -> bool:
             return False
     except FileNotFoundError:
         pass
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    write_atomic(path, text)
     return True
 
 

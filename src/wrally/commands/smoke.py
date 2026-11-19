@@ -9,7 +9,6 @@
 """
 
 import json
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -22,7 +21,7 @@ from wrally.api import canvas
 from wrally.commands import gen as gen_cmd
 from wrally.errors import AuthError, NetworkError, PreflightError, WrallyError
 from wrally.transport.client import McpClient
-from wrally.workspace import Workspace
+from wrally.workspace import Workspace, write_atomic
 
 ROOT = ".wrally-smoke"
 PLAN = "smoke.json"
@@ -136,10 +135,7 @@ def _describe(kind: str, params: dict, with_image: bool) -> str:
 
 
 def _save_plan(run: Path, data: dict) -> None:
-    run.mkdir(parents=True, exist_ok=True)
-    tmp = run / (PLAN + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    os.replace(tmp, run / PLAN)
+    write_atomic(run / PLAN, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
 
 
 def latest_run(cwd: Path) -> Path | None:

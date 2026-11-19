@@ -166,3 +166,57 @@ def test_cli_submits_then_rerun_waits_and_reports(cut, remote, monkeypatch):
     second = runner.invoke(cli.app, args)  # 同样的输入不再提交，只接着等
     assert second.exit_code == 1 and len(remote.canvas_requests) == 1
     assert "waited 0s: 0 upscaled, 1 failed" in second.output and "busy" in second.output
+
+
+async def test_abort_mid_submit_does_not_mark_later_shots_submitting(cut, remote, monkeypatch):
+    """逐镜落盘 submitting：第 1 镜提交中途因鉴权错误中止，第 2 镜不能被提前标成 submitting。"""
+    from wrally.errors import AuthError
+
+    orig_call = remote.call
+
+    async def fail_first(tool, arguments, **kw):
+        if tool == "canvas_upscale_video":
+            raise AuthError("login_expired")
+        return await orig_call(tool, arguments, **kw)
+
+    monkeypatch.setattr(remote, "call", fail_first)
+    with pytest.raises(AuthError):
+        await run(cut, remote, "01-02")
+    assert entry(cut, "01")["video"]["upscaled"]["status"] == "submitting"
+    assert "upscaled" not in entry(cut, "02")["video"]
+
+
+async def test_collect_isolates_poll_error_and_saves_done_shots_per_round(cut, remote, monkeypatch):
+    """轮询时单镜 canvas_task 报错不中断其他镜头，且每轮已完成的镜头立刻落盘。"""
+    from wrally.errors import ToolError
+
+    await run(cut, remote, "01-02")
+    remote.finish_canvas("u1", "big01", content=b"big1", kind="video")
+    orig_call = remote.call
+
+    async def flaky_task(tool, arguments, **kw):
+        if tool == "canvas_get_task" and arguments["task_id"] == "u2":
+            raise ToolError("50001", tool=tool)
+        return await orig_call(tool, arguments, **kw)
+
+    monkeypatch.setattr(remote, "call", flaky_task)
+    got = await upscale.collect(cut, remote, "01-02", http=remote.http(), sleep=no_sleep)
+    assert got.failed == 1 and got.timed_out == 0
+    assert dict((r[0], r[1]) for r in got.rows) == {"01": "done", "02": "error: 50001"}
+    assert (cut.root / ".wrally/video/01-x2.mp4").read_bytes() == b"big1"
+    assert entry(cut, "01")["video"]["upscaled"]["status"] == "done"
+    assert entry(cut, "02")["video"]["upscaled"]["status"] == "running"
+
+
+async def test_collect_persists_done_state_before_sleeping(cut, remote):
+    """某镜第一轮查完已经 done，即使等待第二镜时进程被中断，第一镜的 asset_id 也已落盘。"""
+    await run(cut, remote, "01-02")
+    remote.finish_canvas("u1", "big01", content=b"big1", kind="video")
+
+    async def abort(_seconds):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        await upscale.collect(cut, remote, "01-02", http=remote.http(), sleep=abort)
+    assert entry(cut, "01")["video"]["upscaled"]["status"] == "done"
+    assert entry(cut, "01")["video"]["upscaled"]["asset_id"] == "big01"

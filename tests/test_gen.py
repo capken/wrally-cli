@@ -250,3 +250,24 @@ async def test_name_with_dot_still_gets_extension(tmp_path, remote):
     fetched = await gen.fetch(remote, tmp_path, http=remote.http())
     assert fetched.rows == [("001", "done", "ep3-02-seed1.0.wav")]
     assert (tmp_path / "ep3-02-seed1.0.wav").read_bytes() == b"ID3"
+
+
+async def test_fetch_isolates_poll_error_and_downloads_other_tasks(tmp_path, remote, monkeypatch):
+    """一个任务查状态报错时，不中断同批其他任务的下载，记录保持 submitted 便于重跑。"""
+    params = {"prompt": "x", "model": "img9", "count": 2, "name": "pic"}
+    report = await gen.gen(remote, "image", params, tmp_path)
+    remote.finish_canvas("c1", "i1", b"one")
+    orig_call = remote.call
+
+    async def flaky(tool, arguments, **kw):
+        if tool == "canvas_get_task" and arguments["task_id"] == "c2":
+            raise ToolError("50001", tool=tool)
+        return await orig_call(tool, arguments, **kw)
+
+    monkeypatch.setattr(remote, "call", flaky)
+    fetched = await gen.fetch(remote, tmp_path, job_ids=report.job_ids, http=remote.http())
+    assert fetched.failed == 1 and fetched.timed_out == 0
+    assert (tmp_path / "pic-1.png").read_bytes() == b"one"
+    assert ("001", "done", "pic-1.png") in fetched.rows
+    assert ("001", "error: 50001", "-") in fetched.rows
+    assert log(tmp_path)[0]["state"] == "submitted"

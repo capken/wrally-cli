@@ -339,3 +339,27 @@ async def test_bad_per_shot_duration_stops_before_any_remote_call(ready, bad):
     with pytest.raises(PreflightError) as e:
         await run(ws, remote)
     assert e.value.code == "bad_video_duration" and remote.calls == []
+
+
+async def test_network_error_during_configure_only_fails_that_shot(ready, monkeypatch):
+    """plain_url 抛 NetworkError 时只记单镜失败，不中断其余镜头的配置与提交。"""
+    import httpx2
+
+    from wrally.api import assets
+
+    ws, remote = ready
+    monkeypatch.setattr(assets, "RETRY_DELAYS", (0,))
+    remote.add_asset("key01", "image", png((30, 200, 30)), "01.png")
+    edit(ws, "01", keyframe={"asset_id": "key01"})
+
+    def handler(request):
+        asset_id = request.url.path.lstrip("/")
+        if asset_id == "key01":
+            raise httpx2.ConnectTimeout("timed out", request=request)
+        return httpx2.Response(200, content=remote.files[asset_id])
+
+    async with httpx2.AsyncClient(transport=httpx2.MockTransport(handler)) as http:
+        report = await gen(ws, remote, "01,02", http=http)
+    assert report.submitted == ["02"] and report.failed == 1
+    assert report.rows[0][:2] == ("01", "error: network_error")
+    assert remote.submissions == [["s02"]]

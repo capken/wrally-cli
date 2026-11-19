@@ -14,7 +14,7 @@ import httpx2
 
 from wrally.api.assets import asset_details, plain_url
 from wrally.api.shots import set_model
-from wrally.errors import ToolError
+from wrally.errors import NetworkError, ToolError
 from wrally.transport.client import McpClient
 
 
@@ -101,7 +101,7 @@ async def configure(
                 raw = raw_dir / f"{key}-video-set_model.json" if raw_dir else None
                 await set_model(client, series_id, project_id, [story_id], "video", config, raw)
                 out[key] = ""
-            except httpx2.TransportError:
+            except (httpx2.TransportError, NetworkError):
                 out[key] = "network_error"
             except ToolError as e:
                 out[key] = e.code

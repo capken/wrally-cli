@@ -190,7 +190,7 @@ WorkRally MCP 是标准的 MCP OAuth 2.1（DCR + 授权码 + PKCE），允许 Cl
 - 中断恢复、绑定音色、多镜一起提交时任务 ID 的对应，只有单元测试。选图冲突（`pick_conflict` 加 `--force-picks`）和多镜一起提交真实跑过。
 - 富文本副本的三处检查（`web copy differs`、`push` 的提示、`stale_web_prompt`）只有单元测试；真实只确认了两份一致时不误报。动画副本的三处检查同样只有单元测试。
 - 每镜视频时长 `video_duration` 除单元测试外只真实用过一镜。
-- `McpClient` 的断线重连没有测试。
+- `McpClient` 的断线重连已改成内部单一 owner 任务管理并配了并发重连单元测试，但尚未在真实网络断线上实测。
 - 每镜视频分辨率 `video_resolution`（2026-10-20 加）只有单元测试。
 - 场次视频首尾帧（2026-11-10 加）：`firstLastAssets` 的格式 2026-11-13 照网页上配出来的真实样本改过（原来照 singleAssets 推成列表，服务端报「首尾帧模式缺少 firstFrame/lastFrame 资产」，不扣额度），之后在真实剧集上生成成功。
 - 每镜旁白模型 `audio_model`（2026-11-01 加）：两种模型混在一次提交里只有单元测试。

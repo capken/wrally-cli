@@ -11,7 +11,6 @@ get_upload_token 取 COS 临时凭证 → 自己签名直传到凭证给的 key 
 import hashlib
 import hmac
 import json
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +18,7 @@ from urllib.parse import quote
 
 import anyio
 import httpx2
+from filelock import FileLock
 
 from wrally import media
 from wrally.api.assets import asset_details
@@ -26,6 +26,7 @@ from wrally.config import config_dir
 from wrally.errors import NetworkError, PreflightError, ToolError, WrallyError
 from wrally.localfile import check_file, sha1
 from wrally.transport.client import RETRY_DELAYS, McpClient
+from wrally.workspace import write_atomic
 
 CACHE = "uploads.json"  # 在凭证目录下
 TOKEN_BATCH = 20  # get_upload_token 一次最多 20 个
@@ -39,6 +40,12 @@ def _cache_path() -> Path:
     return config_dir() / CACHE
 
 
+def _cache_lock() -> FileLock:
+    path = _cache_path()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return FileLock(str(path.with_suffix(".lock")), timeout=60)
+
+
 def load_cache() -> dict[str, dict]:
     try:
         return json.loads(_cache_path().read_text(encoding="utf-8")).get("files") or {}
@@ -46,13 +53,13 @@ def load_cache() -> dict[str, dict]:
         return {}
 
 
-def _save_cache(files: dict[str, dict]) -> None:
-    path = _cache_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    text = json.dumps({"version": 1, "files": files}, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+def _record_cache(key: str, entry: dict) -> None:
+    """在文件锁内读-改-写上传记录，避免并发进程互相覆盖。"""
+    with _cache_lock():
+        files = load_cache()
+        files[key] = entry
+        text = json.dumps({"version": 1, "files": files}, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
+        write_atomic(_cache_path(), text, mode=0o600)
 
 
 def _cache_key(digest: str, project_id: str) -> str:
@@ -190,13 +197,13 @@ async def upload(
                 asset_id = next((a.get("id") for a in made.get("assets") or [] if a.get("id")), None)
                 if not asset_id:
                     raise ToolError("asset_id_not_found", tool="asset_create")
-                files[keys[i]] = {
+                entry = {
                     "asset_id": asset_id,
                     "name": path.name,
                     "size": len(body),
                     "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 }
-                _save_cache(files)
+                _record_cache(keys[i], entry)
                 found[keys[i]] = (asset_id, "uploaded")
     finally:
         if owned:

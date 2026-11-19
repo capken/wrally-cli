@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx2
 
 from wrally.api.assets import asset_details, plain_url
-from wrally.errors import ToolError
+from wrally.errors import NetworkError, ToolError
 from wrally.transport.client import McpClient
 
 
@@ -31,7 +31,7 @@ async def bind_voice(
     http = http or httpx2.AsyncClient(timeout=30)
     try:
         url = await plain_url(http, asset)
-    except httpx2.TransportError:
+    except (httpx2.TransportError, NetworkError):
         return {key: "network_error" for key, _ in items}
     finally:
         if owned:
@@ -51,7 +51,7 @@ async def bind_voice(
                 raw_path=raw_dir / f"{key}-audio-bind_asset.json" if raw_dir else None,
             )
             out[key] = ""
-        except ToolError as e:
+        except (NetworkError, ToolError) as e:
             out[key] = e.code
     return out
 

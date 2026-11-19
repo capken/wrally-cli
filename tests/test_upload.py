@@ -223,3 +223,32 @@ async def test_voice_can_be_a_local_file(ws, remote):
     assert stale(ws, data, entry(ws, "02")) == []  # 指纹按文件内容，check 判断得出来
     (ws.root / "voice.wav").write_bytes(b"RIFF-other")
     assert stale(ws, ws.load(), entry(ws, "02")) == ["audio was made from different narration"]
+
+
+async def test_upload_cache_merges_concurrent_writes_under_lock(tmp_path, remote, monkeypatch):
+    """上传缓存写回时在锁内重新读盘合并，不冲掉并行进程刚刚写入的另一条记录，且权限 0600。"""
+    import stat
+
+    a = tmp_path / "a.png"
+    b = tmp_path / "b.png"
+    a.write_bytes(b"A")
+    b.write_bytes(b"B")
+    orig_call = remote.call
+
+    async def inject_other_process(tool, arguments, **kw):
+        res = await orig_call(tool, arguments, **kw)
+        if tool == "get_upload_token":
+            # 模拟本进程读完旧缓存后、入库前，另一个进程已经写进了另一条上传记录
+            upload_api._record_cache(
+                f"{localfile.sha1(b)}:proj",
+                {"asset_id": "from_other_proc", "name": "b.png", "size": 1, "uploaded_at": "2026-11-19"},
+            )
+        return res
+
+    monkeypatch.setattr(remote, "call", inject_other_process)
+    await upload_api.upload(remote, [a], "proj", http=remote.http())
+    cached = upload_api.load_cache()
+    assert cached[f"{localfile.sha1(a)}:proj"]["asset_id"] == "up1"
+    assert cached[f"{localfile.sha1(b)}:proj"]["asset_id"] == "from_other_proc"
+    assert stat.S_IMODE(upload_api._cache_path().stat().st_mode) == 0o600
+    assert not list(upload_api._cache_path().parent.glob("*.tmp"))

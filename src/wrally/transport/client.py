@@ -5,15 +5,18 @@
 """
 
 import json
+import math
 import os
 import time
 from collections.abc import Callable
 from contextlib import AsyncExitStack
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import anyio
 import httpx2
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import types
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
@@ -114,8 +117,22 @@ def parse_result(tool: str, result: Any, raw_path: Path | None = None) -> Any:
     return data
 
 
+@dataclass
+class _SessionReq:
+    op: Literal["acquire", "drop"]
+    failed_gen: int | None
+    done: anyio.Event = field(default_factory=anyio.Event)
+    result: tuple[Any, int] | None = None
+    error: BaseException | None = None
+
+
 class McpClient:
-    """异步上下文管理器；一条命令内复用同一个会话。"""
+    """异步上下文管理器；一条命令内复用同一个会话。
+
+    底层会话（AsyncExitStack + streamable_http_client + ClientSession）由内部唯一一个 owner 任务
+    打开和关闭：并发调用（for_each）里某一路遇到可重试错误时，不会跨 task 关闭 cancel scope，
+    多路同时失败也只会重连一次。
+    """
 
     def __init__(
         self,
@@ -129,27 +146,43 @@ class McpClient:
         self._log = log
         self._auth_http: httpx2.Client | None = None
         self._creds: Credentials | None = None
-        self._stack: AsyncExitStack | None = None
-        self._session: ClientSession | None = None
+        self._tg: Any = None
+        self._send: MemoryObjectSendStream[_SessionReq] | None = None
 
     async def __aenter__(self) -> "McpClient":
         self._auth_http = httpx2.Client(timeout=30)
         try:
             # 先在 SDK 之外检查登录状态，未登录时能直接给出干净的错误
             self._creds = ensure_fresh(self._store, self._auth_http)
-            await self._connect()
-        except BaseException:
-            await self.__aexit__(None, None, None)
+            send, recv = anyio.create_memory_object_stream[_SessionReq](math.inf)
+            self._send = send
+            tg = anyio.create_task_group()
+            await tg.__aenter__()
+            self._tg = tg
+            tg.start_soon(self._owner, recv)
+            await self._acquire(None)
+        except BaseException as e:
+            await self.__aexit__(type(e), e, e.__traceback__)
             raise
         return self
 
     async def __aexit__(self, *exc: object) -> None:
-        await self._disconnect()
-        if self._auth_http is not None:
-            self._auth_http.close()
-            self._auth_http = None
+        send, self._send = self._send, None
+        tg, self._tg = self._tg, None
+        try:
+            with anyio.CancelScope(shield=True):
+                if send is not None:
+                    await send.aclose()
+            if tg is not None:
+                if exc and exc[0] is not None:
+                    tg.cancel_scope.cancel()
+                await tg.__aexit__(None, None, None)
+        finally:
+            if self._auth_http is not None:
+                self._auth_http.close()
+                self._auth_http = None
 
-    async def _connect(self) -> None:
+    async def _open_session(self) -> tuple[AsyncExitStack, Any]:
         assert self._auth_http is not None
         stack = AsyncExitStack()
         try:
@@ -178,36 +211,93 @@ class McpClient:
             if isinstance(e, Exception):
                 raise NetworkError("connect_failed", type(e).__name__) from e
             raise
-        self._stack, self._session = stack, session
+        return stack, session
 
-    async def _disconnect(self) -> None:
-        stack, self._stack, self._session = self._stack, None, None
-        if stack is not None:
-            try:
-                await stack.aclose()
-            except Exception:
-                pass
+    async def _owner(self, recv: MemoryObjectReceiveStream[_SessionReq]) -> None:
+        stack: AsyncExitStack | None = None
+        session: Any = None
+        gen = 0
+
+        async def close_session() -> None:
+            nonlocal stack, session
+            old, stack, session = stack, None, None
+            if old is not None:
+                try:
+                    await old.aclose()
+                except Exception:
+                    pass
+
+        try:
+            async with recv:
+                async for req in recv:
+                    try:
+                        # 只有报错的是当前这一代会话才断开：别路已经重连好新会话时直接复用
+                        if req.failed_gen is not None and req.failed_gen == gen:
+                            await close_session()
+                        if req.op == "acquire":
+                            if session is None:
+                                stack, session = await self._open_session()
+                                gen += 1
+                            req.result = (session, gen)
+                    except BaseException as e:
+                        req.error = e
+                        if not isinstance(e, Exception):
+                            req.done.set()
+                            raise
+                    finally:
+                        req.done.set()
+        finally:
+            await close_session()
+
+    async def _request(
+        self, op: Literal["acquire", "drop"], failed_gen: int | None
+    ) -> tuple[Any, int] | None:
+        if self._send is None:
+            raise RuntimeError("McpClient is not connected")
+        req = _SessionReq(op=op, failed_gen=failed_gen)
+        await self._send.send(req)
+        await req.done.wait()
+        if req.error is not None:
+            raise req.error
+        return req.result
+
+    async def _acquire(self, failed_gen: int | None) -> tuple[Any, int]:
+        got = await self._request("acquire", failed_gen)
+        assert got is not None
+        return got
+
+    async def _drop(self, failed_gen: int) -> None:
+        await self._request("drop", failed_gen)
 
     async def call(
         self, tool: str, arguments: dict[str, Any], *, raw_path: Path | None = None, retry: bool = True
     ) -> Any:
         delays = RETRY_DELAYS if retry else ()
+        failed_gen: int | None = None
         for attempt in range(len(delays) + 1):
-            if self._session is None:
-                await self._connect()
-            assert self._session is not None
             started = time.monotonic()
+            gen: int | None = None
             try:
-                result = await self._session.call_tool(tool, arguments, read_timeout_seconds=CALL_TIMEOUT)
+                session, gen = await self._acquire(failed_gen)
+                failed_gen = None
+                result = await session.call_tool(tool, arguments, read_timeout_seconds=CALL_TIMEOUT)
             except Exception as e:
                 found = _find_wrally_error(e)
                 if found:
-                    raise found from e
+                    if not isinstance(found, NetworkError) or attempt == len(delays):
+                        if gen is not None and isinstance(found, NetworkError):
+                            await self._drop(gen)
+                        raise found from e
+                    failed_gen = gen
+                    await anyio.sleep(delays[attempt])
+                    continue
                 if not _is_retryable(e):
                     raise ToolError("mcp_error", tool=tool) from e
-                await self._disconnect()
                 if attempt == len(delays):
+                    if gen is not None:
+                        await self._drop(gen)
                     raise NetworkError(hint=f"{tool} {type(e).__name__}") from e
+                failed_gen = gen
                 await anyio.sleep(delays[attempt])
                 continue
             if self._log:
