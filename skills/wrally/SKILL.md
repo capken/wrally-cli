@@ -51,7 +51,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 | `smoke [--only …] [--resume] [--dry-run]` | 真实调用一遍：依次生成图像、配音、5 秒视频并检查文件 | 是 | **是** |
 | `login` | 浏览器授权（凭证过期时） | 是 | 否 |
 
-`video gen` 另有 `--force-picks`，`audio gen` 另有 `--redo-failed`（只重做音高超标或上次失败的）。
+`video gen` 另有 `--force-picks`，`audio gen` 另有 `--redo-failed`（只重做音高、声道差、底噪超标或上次失败的）。
 
 ## 一集的流程
 
@@ -60,7 +60,7 @@ description: 用本机的 `wrally` 命令行工具在 WorkRally 上批量制作�
 1. **建档**。新的一集：`wrally new --shots 00-11,99 --name "EP5 …" --dry-run`，确认后去掉 `--dry-run`。可以先手写清单条目（不写 `story_id`）和 `prompts/` 再跑 `new`：条目按镜号认领，本地提示词保留，建完直接走第 2 步的 `lint` → `push`。远端已有场次的：`wrally pull --project <ID> --series <ID>`（有项目文件时不用给 `--project`）。给已有的一集加镜头也用 `new`（只补缺的场次）；一镜拆成几镜时用子镜号 `--shots 13a,13b`（数字加一个小写字母，单独列出），建好后在清单里把子镜挪到原镜后面，清单顺序就是成片顺序。
 2. **写提示词和台词**。编辑 `prompts/<镜号>.image.md`、`.anim.md` 和清单里的 `narration`，然后 `wrally lint`，再 `wrally push --dry-run` → `wrally push`。
 3. **关键帧**：`wrally keyframe gen --dry-run` → 用户确认 → `wrally keyframe gen --wait --fetch`。把 `.wrally/sheets/keyframes-<镜号>.jpg` 给用户看，等用户说选哪张，再 `wrally keyframe pick 02 A 03 B …`。
-4. **视频**：`wrally video gen --dry-run` → 确认 → `wrally video gen --wait --fetch`。某一镜要指定结束画面时，先 `wrally keyframe pick 03 C --last` 选尾帧（候选序号或 asset_id），这一镜就走首尾帧模式；首尾帧模式还没有真实提交过，第一次用时告诉用户。
+4. **视频**：`wrally video gen --dry-run` → 确认 → `wrally video gen --wait --fetch`。某一镜要指定结束画面时，先 `wrally keyframe pick 03 C --last` 选尾帧（候选序号或 asset_id），这一镜就走首尾帧模式。
 5. **旁白**：`wrally audio gen --dry-run` → 确认 → `wrally audio gen --wait --fetch`。
 6. **检查**：`wrally check`，只看有警告的镜头；需要看画面时读 `.wrally/sheets/<镜号>.jpg`（小图）。返修就改提示词或台词，重跑对应的 `gen`，用 `--shots` 限定范围。
 7. **超分（可选，用户要时才做）**：`wrally video upscale --dry-run` → 确认 → `wrally video upscale`。超分的是清单里每镜现在用的那条视频；之后视频换了，超分版算过期，`export` 自动改回原视频，要再超分一次。合成脚本若把片段缩到固定尺寸，超分不起作用，先看项目的合成说明。

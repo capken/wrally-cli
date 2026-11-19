@@ -49,7 +49,14 @@ def _file(ws: Workspace, entry: dict, name: str):
     return path if path and path.exists() else None
 
 
-def stale(ws: Workspace, data: dict, entry: dict) -> list[str]:
+def stale(
+    ws: Workspace,
+    data: dict,
+    entry: dict,
+    *,
+    styles=None,
+    defaults: dict | None = None,
+) -> list[str]:
     """素材是不是用现在的输入做的。只对 wrally 生成的素材有效：它们在清单里留有输入指纹 made_from。
 
     台词改了而旁白没重做，字幕和声音就会对不上；选图或动画提示词改了而视频没重做同理。
@@ -61,8 +68,8 @@ def stale(ws: Workspace, data: dict, entry: dict) -> list[str]:
     from wrally.prompts import composed, load_styles
 
     out = []
-    styles = load_styles(ws, data)
-    defaults = ws.settings(data, "defaults")
+    styles = load_styles(ws, data) if styles is None else styles
+    defaults = ws.settings(data, "defaults") if defaults is None else defaults
     try:
         audio = entry.get("audio") or {}
         if audio.get("made_from"):
@@ -91,8 +98,12 @@ def stale(ws: Workspace, data: dict, entry: dict) -> list[str]:
 
 
 def check(ws: Workspace, spec: str = "all") -> CheckReport:
+    from wrally.prompts import load_styles
+
     data = load_manifest(ws)
     rules = load_rules(ws, data)
+    styles = load_styles(ws, data)
+    defaults = ws.settings(data, "defaults")
     report = CheckReport(report_path=(ws.state_dir / "report.md").relative_to(ws.root).as_posix())
     report.limits = {
         "f0_max": rules.f0_max, "slow_max": rules.slow_max, "narration_max": rules.narration_max,
@@ -150,7 +161,7 @@ def check(ws: Workspace, spec: str = "all") -> CheckReport:
         slow = alen / vlen if vlen and alen else 0.0
         if rules.slow_max is not None and slow > rules.slow_max:
             warnings.append(f"slow x{slow:.2f} > {rules.slow_max:g}")
-        warnings += stale(ws, data, entry)
+        warnings += stale(ws, data, entry, styles=styles, defaults=defaults)
         narration = str(entry.get("narration") or "")
         if rules.narration_max is not None and core_len(narration) > rules.narration_max:
             warnings.append(f"narration {core_len(narration)} chars > {rules.narration_max}")

@@ -30,9 +30,9 @@ def running():
         threading.Thread(target=server.serve_forever, daemon=True).start()
         servers.append(server)
 
-        def get(path, headers=None):
+        def get(path, headers=None, method="GET"):
             conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
-            conn.request("GET", path, headers=headers or {})
+            conn.request(method, path, headers=headers or {})
             res = conn.getresponse()
             body = res.read()
             conn.close()
@@ -94,6 +94,9 @@ def test_serves_pages_and_media(ws, tmp_path_factory, running):
     assert res.getheader("Content-Type") == "video/mp4"
     res, body = get("/ep1/.wrally/video/02.mp4")
     assert res.status == 200 and len(body) == 1024 and res.getheader("Cache-Control") is None
+    assert res.getheader("Accept-Ranges") == "bytes"
+    res, _ = get("/ep1/.wrally/video/02.mp4", method="HEAD")
+    assert res.status == 200 and res.getheader("Accept-Ranges") == "bytes"
     assert get("/ep1/.wrally/video/02.mp4", {"Range": "bytes=2000-"})[0].status == 416
 
 
@@ -178,3 +181,14 @@ def test_client_reset_is_not_printed(ws, capfd):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_discovers_new_episode_while_running(ws, tmp_path_factory, running):
+    """服务开着期间新建一集：不用重启，总览页和那一集的页面都能直接访问。"""
+    root = project_with(ws, tmp_path_factory, names=("ep1",))
+    _, get = running(root)
+    assert "ep2" not in get("/index.html")[1].decode()
+    shutil.copytree(ws.root, root / "ep2")
+    assert "ep2" in get("/index.html")[1].decode()
+    assert get("/ep2/page.html")[0].status == 200
+    assert (root / "ep2" / "page.html").is_file()

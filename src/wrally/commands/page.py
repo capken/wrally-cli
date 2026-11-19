@@ -118,7 +118,8 @@ def _keyframe(ws: Workspace, entry: dict) -> dict[str, Any]:
     pick = letter(ids.index(picked)) if picked in ids else ""
     note = str(hint.get("note") or "") if suggest else ""
     last_pick = (letter(ids.index(last)) if last in ids else str(last)) if last else ""
-    last_src = _src(ws, _find(directory, last_pick)) if last in ids else None
+    last_stem = letter(ids.index(last)) if last in ids else (f"pick-{last}" if last else "")
+    last_src = _src(ws, _find(directory, last_stem)) if last_stem else None
     return {
         "status": status, "src": src, "pick": pick, "candidates": candidates,
         "suggest": suggest, "suggest_note": note, "last": last_pick, "last_src": last_src,
@@ -226,11 +227,12 @@ def collect(ws: Workspace) -> dict[str, Any]:
                   "noise_floor_max": rules.noise_floor_max}  # fmt: skip
     except WrallyError:
         limits = {}  # 规则写错了：页面照样建，只是不标超限
+    defaults = ws.settings(data, "defaults")
     shots = []
     for entry in data["shots"]:
         web = copies.get(str(entry.get("story_id"))) or {}
         try:
-            stale = stale_of(ws, data, entry)
+            stale = stale_of(ws, data, entry, styles=styles, defaults=defaults) if not note else []
         except WrallyError:
             stale = []  # 公共文本读不出来，上面已经记了
         audio = _media(ws, entry, "audio", stale)
@@ -281,8 +283,9 @@ def _downloaded(ws: Workspace, source: Workspace, data: dict[str, Any], local: d
         for i, asset_id in enumerate(ids):
             if not local.get(asset_id):
                 local[asset_id] = _src(ws, _find(directory, letter(i))) or ""
-        if kf.get("asset_id") and kf["asset_id"] not in ids and not local.get(str(kf["asset_id"])):
-            local[str(kf["asset_id"])] = _src(ws, _find(directory, f"pick-{kf['asset_id']}")) or ""
+        for extra in (kf.get("asset_id"), kf.get("last")):
+            if extra and extra not in ids and not local.get(str(extra)):
+                local[str(extra)] = _src(ws, _find(directory, f"pick-{extra}")) or ""
 
 
 def _previews(ws: Workspace, data: dict[str, Any]) -> dict[str, Path]:
@@ -459,7 +462,11 @@ def signature(ws: Workspace) -> tuple:
     files = [ws.manifest_path, *([project] if project else []), *sorted(ws.root.glob("*.mp4"))]
     try:
         data = load_manifest(ws)
-        files += sorted(_final(ws, data)[0].values()) + sorted(_previews(ws, data).values())
+        files += [
+            ws.output_path(data),
+            *sorted(_final(ws, data)[0].values()),
+            *sorted(_previews(ws, data).values()),
+        ]
     except Exception:  # noqa: BLE001, S110
         pass  # 清单正改到一半，下一轮再算
     folders = [ws.root / name for name in WATCHED] + ([project.parent / "styles"] if project else [])

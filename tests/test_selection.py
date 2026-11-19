@@ -18,11 +18,19 @@ def test_shots_selector(spec, expected):
     assert parse_shots(spec, KEYS) == expected
 
 
-@pytest.mark.parametrize("spec", ["08", "02,xx", "04-07", ""])
+@pytest.mark.parametrize("spec", ["08", "02,xx", "04-07", "07-02", ""])
 def test_unknown_shot_is_a_preflight_error(spec):
     with pytest.raises(PreflightError) as e:
         parse_shots(spec, KEYS)
     assert e.value.code == "unknown_shot" and e.value.exit_code == 2
+
+
+def test_range_follows_manifest_order_with_subshots_and_large_numbers():
+    keys = ["00", "02", "02a", "02b", "12", "03", "98", "99", "100", "101"]
+    assert parse_shots("2a-3", keys) == ["02a", "02b", "12", "03"]
+    assert parse_shots("02-03", keys) == ["02", "02a", "02b", "12", "03"]
+    assert parse_shots("98-101", keys) == ["98", "99", "100", "101"]
+    assert parse_shots("2b", keys) == ["02b"]
 
 
 def test_candidate_letters():

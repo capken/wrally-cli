@@ -52,11 +52,15 @@ def web_copies(ws: Workspace) -> dict[str, dict[str, str]] | None:
 
 def _norm(key: str) -> str:
     key = key.strip()
-    return key.zfill(2) if key.isdigit() else key
+    if key.isdigit():
+        return key.zfill(2)
+    if len(key) > 1 and key[:-1].isdigit() and key[-1] in "abcdefghijklmnopqrstuvwxyz":
+        return key[:-1].zfill(2) + key[-1]
+    return key
 
 
 def parse_shots(spec: str, keys: list[str]) -> list[str]:
-    """--shots 支持 all、02,05、02-07；结果按清单顺序返回。"""
+    """--shots 支持 all、02,05、02-07；范围按清单顺序切片，结果按清单顺序返回。"""
     if spec.strip() == "all":
         return list(keys)
     wanted: set[str] = set()
@@ -65,10 +69,12 @@ def parse_shots(spec: str, keys: list[str]) -> list[str]:
             continue
         if "-" in part:
             lo, hi = (_norm(x) for x in part.split("-", 1))
-            hit = [k for k in keys if lo <= k <= hi]
-            if lo not in keys or hi not in keys or not hit:
+            if lo not in keys or hi not in keys:
                 raise PreflightError("unknown_shot", f"({part.strip()})")
-            wanted.update(hit)
+            i, j = keys.index(lo), keys.index(hi)
+            if i > j:
+                raise PreflightError("unknown_shot", f"({part.strip()})")
+            wanted.update(keys[i : j + 1])
         else:
             key = _norm(part)
             if key not in keys:

@@ -204,3 +204,17 @@ def test_lint_word_lists_can_be_changed_per_show(ws):
     assert ("01", "anim: fine motion words 提笔") in problems
     assert ("01", "image: hard to draw words 手部特写") in problems  # 「没有水印」是否定写法
     assert not any("light effect" in p or p.startswith("narration:") for _, p in problems)
+
+
+def test_lint_warns_on_unknown_defaults_keys(ws):
+    """defaults 里拼错键名（如 first_last_model）报 warn，不挡执行但能及时发现。"""
+    data = ws.load()
+    data["defaults"] = {
+        "video": {"model": "vid1", "first_last_model": "fl1"},
+        "extra_typo": 1,
+    }
+    ws.save(data)
+    report = lint(ws, "02")
+    assert report.errors == 0
+    assert ("-", "warn", "defaults: unknown key extra_typo") in report.rows
+    assert ("-", "warn", "defaults.video: unknown key first_last_model") in report.rows

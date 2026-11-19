@@ -32,18 +32,15 @@ CHUNK = 64 * 1024
 
 @dataclass
 class Site:
-    """服务的根目录和其中的各集。episodes 为空时根目录本身就是一集。"""
+    """服务的根目录和其中的各集。project 为假时根目录本身就是一集。"""
 
     root: Path
     start: str  # 打开时的路径，如 /index.html、/ep3/page.html
     episodes: list[Path] = field(default_factory=list)
+    project: bool = False
     seen: dict[Path, tuple] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
     warned: set[str] = field(default_factory=set)
-
-    @property
-    def project(self) -> bool:
-        return bool(self.episodes)
 
 
 def locate(directory: Path) -> Site:
@@ -53,10 +50,12 @@ def locate(directory: Path) -> Site:
         project = ws.project_path()
         if project and project.parent == directory.parent:
             root = project.parent
-            return Site(root, f"/{quote(directory.name)}/{page_cmd.PAGE}", page_cmd.episode_dirs(root))
+            return Site(
+                root, f"/{quote(directory.name)}/{page_cmd.PAGE}", page_cmd.episode_dirs(root), project=True
+            )
         return Site(directory, f"/{page_cmd.PAGE}")
     if (directory / PROJECT).is_file():
-        return Site(directory, f"/{page_cmd.INDEX}", page_cmd.episode_dirs(directory))
+        return Site(directory, f"/{page_cmd.INDEX}", page_cmd.episode_dirs(directory), project=True)
     raise PreflightError("no_manifest", "(run in a project or episode directory)")
 
 
@@ -79,6 +78,17 @@ def _refresh(site: Site, folder: Path) -> bool:
     return True
 
 
+def _sync_episodes(site: Site) -> bool:
+    """重新扫描项目目录下的各集：服务开着期间新建或删掉的集不用重启就能看到。"""
+    latest = page_cmd.episode_dirs(site.root)
+    if latest == site.episodes:
+        return False
+    site.episodes = latest
+    for stale in set(site.seen) - set(latest):
+        site.seen.pop(stale, None)
+    return True
+
+
 def refresh(site: Site, path: str) -> None:
     """按请求的路径重建需要的页面：某一集的页面或版本文件只看那一集；总览页要看每一集。"""
     parts = [p for p in path.split("/") if p]
@@ -89,11 +99,15 @@ def refresh(site: Site, path: str) -> None:
                 _refresh(site, site.root)
             return
         if parts in ([], [page_cmd.INDEX], [".wrally", page_cmd.INDEX_VERSION]):
+            roster_changed = _sync_episodes(site)
             changed = [_refresh(site, folder) for folder in site.episodes]
-            if any(changed) or not (site.root / page_cmd.INDEX).is_file():
+            if roster_changed or any(changed) or not (site.root / page_cmd.INDEX).is_file():
                 page_cmd.build_index(site.root)
             return
         folder = next((f for f in site.episodes if parts[0] == f.name), None)
+        if folder is None and parts[1:] in ([page_cmd.PAGE], [".wrally", page_cmd.VERSION]):
+            _sync_episodes(site)
+            folder = next((f for f in site.episodes if parts[0] == f.name), None)
         if folder and parts[1:] in ([page_cmd.PAGE], [".wrally", page_cmd.VERSION]):
             if _refresh(site, folder):
                 page_cmd.build_index(site.root)
@@ -101,7 +115,8 @@ def refresh(site: Site, path: str) -> None:
 
 def build_all(site: Site) -> None:
     """启动时建一遍，并记下各集的文件状态。"""
-    for folder in site.episodes or [site.root]:
+    targets = site.episodes if site.project else [site.root]
+    for folder in targets:
         site.seen.pop(folder, None)
         _refresh(site, folder)
     if site.project:
@@ -114,15 +129,22 @@ class Handler(SimpleHTTPRequestHandler):
 
     def __init__(self, *args: Any, site: Site, **kwargs: Any) -> None:
         self.site = site
+        self._status = 0
         super().__init__(*args, directory=str(site.root), **kwargs)
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         pass  # 终端只留启动时那一行
 
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self._status = code
+        super().send_response(code, message)
+
     def end_headers(self) -> None:
         # 页面和版本文件每次都要新的；素材地址带 ?v=修改时间，可以缓存
         if urlsplit(self.path).path.endswith((".html", ".js")):
             self.send_header("Cache-Control", "no-cache")
+        if self._status in (HTTPStatus.OK, HTTPStatus.PARTIAL_CONTENT):
+            self.send_header("Accept-Ranges", "bytes")
         super().end_headers()
 
     def _route(self) -> str | None:
@@ -168,7 +190,6 @@ class Handler(SimpleHTTPRequestHandler):
         start, end = span
         self.send_response(HTTPStatus.PARTIAL_CONTENT)
         self.send_header("Content-Type", self.guess_type(str(target)))
-        self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.send_header("Content-Length", str(end - start + 1))
         self.end_headers()

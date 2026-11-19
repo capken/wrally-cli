@@ -15,6 +15,17 @@ from wrally.workspace import Workspace, write_if_changed
 
 HEADERS = ("shot", "level", "problem")
 NEGATIONS = ("不出现", "不要", "没有", "不使用", "不能", "避免", "禁止")
+# defaults 里 wrally 认识的键：写错名字时（如 first_last_model）报 warn，免得悄悄不生效
+DEFAULT_KEYS = {
+    "image", "video", "audio", "upscale",
+    "style_suffix", "anim_prefix", "narration_template", "border", "borders",
+}  # fmt: skip
+DEFAULT_SUBKEYS = {
+    "image": {"model", "resolution", "aspect", "count"},
+    "video": {"model", "firstlast_model", "resolution", "aspect", "duration", "audio"},
+    "audio": {"model", "voice_asset", "voice_name", "voice_preset", "voice_fields"},
+    "upscale": {"model", "scale"},
+}
 
 
 @dataclass
@@ -54,13 +65,27 @@ def find_words(text: str, words: tuple[str, ...]) -> list[str]:
     return [w for w in words if any(not _negated(text, m.start()) for m in re.finditer(re.escape(w), text))]
 
 
+def _check_defaults(defaults: dict) -> list[tuple[str, str, str]]:
+    """检查 defaults 及其子小节里的未知键名，只报 warn，不挡执行。"""
+    rows: list[tuple[str, str, str]] = []
+    for key in sorted(str(k) for k in defaults if str(k) not in DEFAULT_KEYS):
+        rows.append(("-", "warn", f"defaults: unknown key {key}"))
+    for sub, allowed in DEFAULT_SUBKEYS.items():
+        node = defaults.get(sub)
+        if not isinstance(node, dict):
+            continue
+        for key in sorted(str(k) for k in node if str(k) not in allowed):
+            rows.append(("-", "warn", f"defaults.{sub}: unknown key {key}"))
+    return rows
+
+
 def lint(ws: Workspace, spec: str = "all") -> LintReport:
     data = load_manifest(ws)
     styles = load_styles(ws, data)
     rules = load_rules(ws, data)
     shot_keys = {str(e["key"]) for e in data.get("shots") or []}
     named = ws.settings(data, "ref_assets")
-    report = LintReport()
+    report = LintReport(rows=_check_defaults(ws.settings(data, "defaults")))
     for entry in select(data, spec):
         key = str(entry["key"])
         report.shots += 1

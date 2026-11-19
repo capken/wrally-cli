@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
-import anyio
 import httpx2
 import typer
 
@@ -19,7 +18,6 @@ from wrally.cli.base import (
     _emit,
     _kind,
     _limit,
-    _log,
     handle_errors,
     refreshes_page,
     run_remote,
@@ -37,7 +35,6 @@ from wrally.commands import wait as wait_cmd
 from wrally.config import mcp_url
 from wrally.errors import PreflightError
 from wrally.transport import auth
-from wrally.transport.client import McpClient
 from wrally.workspace import Workspace
 
 
@@ -76,21 +73,20 @@ def register_core(app: typer.Typer) -> None:
         if not project_id or not series_id:
             raise PreflightError("missing_series", "(first pull needs --project and --series)")
 
-        async def fetch_shots() -> list:
-            async with McpClient(log=_log(verbose)) as client:
-                return await shot_list(client, series_id, project_id, raw_dir=ws.raw_dir)
-
-        shots = anyio.run(fetch_shots)
+        shots = run_remote(
+            verbose, lambda client: shot_list(client, series_id, project_id, raw_dir=ws.raw_dir)
+        )
         report = pull_cmd.merge(
             ws, shots, project_id=project_id, series_id=series_id, title=title, force=force
         )
-        line = pull_cmd.summary(report)
-        rows = report.table()
-        details = str(ws.state_dir / "pull.json")
-        if as_json:
-            print(output.render_json(line, pull_cmd.HEADERS, rows, details=details))
-        else:
-            print(output.render(line, pull_cmd.HEADERS, rows, details=details, notes=report.notes))
+        _emit(
+            pull_cmd.summary(report),
+            pull_cmd.HEADERS,
+            report.table(),
+            as_json,
+            details=str(ws.state_dir / "pull.json"),
+            notes=tuple(report.notes),
+        )
 
     @app.command()
     @handle_errors

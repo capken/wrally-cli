@@ -118,3 +118,19 @@ async def test_order_that_did_not_take_effect_is_an_error(ws, remote):
     with pytest.raises(ToolError) as e:
         await order(ws, remote)
     assert e.value.code == "order_not_applied"
+
+
+async def test_order_by_key_places_subshots_after_their_number_and_before_99(ws, remote):
+    """子镜号 02a、02b 按 --by-key 排序应紧跟在 02 之后、99 之前，不落到片尾后面。"""
+    from ruamel.yaml.comments import CommentedMap
+
+    data = ws.load()
+    for suffix, sid, sort_num in (("02b", "s02b", 5), ("02a", "s02a", 6)):
+        data["shots"].append(CommentedMap(key=suffix, story_id=sid))
+        remote.stories.append(
+            {**remote.stories[2], "story_id": sid, "story_num": suffix, "sort_num": sort_num}
+        )
+    ws.save(data)
+    await order(ws, remote, by_key=True)
+    assert keys(ws) == ["00", "01", "02", "02a", "02b", "99"]
+    assert remote_order(remote) == ["片头", "01", "02", "02a", "02b", "片尾"]

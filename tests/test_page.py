@@ -122,10 +122,15 @@ def test_last_frame_and_refs(ws):
     assert refs["书房"] == {"name": "书房", "kind": "asset", "src": refs["书房"]["src"]}
     assert refs["书房"]["src"].startswith(".wrally/keyframes/01/A.png?v=")
     assert refs["门"]["src"] is None and refs["没登记"] == {"name": "没登记", "kind": "unknown", "src": None}
-    # 不在候选里的尾帧只有名字
+    # 不在候选里的尾帧：没下载时只有名字，下载成 pick-<asset_id> 后能直接展示
     edit(ws, "02", lambda e: e["keyframe"].update(last="elsewhere"))
     kf = shot(ws, "02")["keyframe"]
     assert kf["last"] == "elsewhere" and kf["last_src"] is None
+    put(ws, ".wrally/keyframes/02/pick-elsewhere.png")
+    kf = shot(ws, "02")["keyframe"]
+    assert kf["last"] == "elsewhere" and kf["last_src"].startswith(
+        ".wrally/keyframes/02/pick-elsewhere.png?v="
+    )
 
 
 def test_measured_audio_and_limits(ws):
@@ -198,10 +203,12 @@ def test_prompt_text_cannot_break_out_of_the_page(ws):
 def test_film_is_linked_when_present(ws):
     assert page.collect(ws)["film"] is None
     data = ws.load()
-    data["output"] = "EP 成片.mp4"
+    data["output"] = "out/EP 成片.mov"
     ws.save(data)
-    put(ws, "EP 成片.mp4")
-    assert page.collect(ws)["film"].startswith("EP%20%E6%88%90%E7%89%87.mp4?v=")
+    before = page.signature(ws)
+    put(ws, "out/EP 成片.mov")
+    assert page.signature(ws) != before  # 自定义目录和扩展名的成片变动也会触发 --watch / serve 重建
+    assert page.collect(ws)["film"].startswith("out/EP%20%E6%88%90%E7%89%87.mov?v=")
 
 
 def test_enabled_can_be_switched_off(ws, tmp_path):

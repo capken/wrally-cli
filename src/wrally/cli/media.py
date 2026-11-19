@@ -98,7 +98,7 @@ def register(app: typer.Typer) -> None:
             notes=tuple(report.notes),
         )
 
-    keyframe_app = typer.Typer(no_args_is_help=True, help="关键帧：pick 选定、sheet 候选对比图")
+    keyframe_app = typer.Typer(no_args_is_help=True, help="关键帧：gen 生成候选、pick 选定、sheet 候选对比图")
     app.add_typer(keyframe_app, name="keyframe")
 
     @keyframe_app.command("gen")
@@ -303,7 +303,7 @@ def register(app: typer.Typer) -> None:
         fetch_: Annotated[bool, typer.Option("--fetch", help="完成后下载并检查音高（隐含 --wait）")] = False,
         redo: Annotated[bool, typer.Option("--redo", help="即使输入没变也重新生成")] = False,
         redo_failed: Annotated[
-            bool, typer.Option("--redo-failed", help="只重做音高超标或上次失败的镜头")
+            bool, typer.Option("--redo-failed", help="只重做质检未过（音高、声道差、底噪）或上次失败的镜头")
         ] = False,
         dry_run: Annotated[bool, typer.Option("--dry-run", help="只列出会提交哪些镜头，不调用远端")] = False,
         timeout: Annotated[float, typer.Option("--timeout", help="--wait 的最长等待秒数")] = 600,

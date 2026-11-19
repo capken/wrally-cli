@@ -115,3 +115,18 @@ def test_gen_accepts_wait_as_the_default(monkeypatch):
         result = CliRunner().invoke(app, ["gen", "video", "推镜", "--model", "m", *flags])
         assert result.exit_code == 0, result.output
     assert seen == [False, False, True]
+
+
+def test_pull_routes_through_run_remote_and_emits_json(tmp_path, remote, monkeypatch):
+    import anyio
+
+    from wrally import cli
+
+    monkeypatch.setattr(cli, "_remote", lambda verbose, work: anyio.run(work, remote))
+    result = CliRunner().invoke(
+        app, ["pull", "-C", str(tmp_path), "--project", "proj", "--series", "ser", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["summary"].startswith("pulled 4 shots: 4 new")
+    assert len(payload["rows"]) == 4

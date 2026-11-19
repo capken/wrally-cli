@@ -190,3 +190,18 @@ async def test_pick_outside_candidates_is_downloaded_separately(ws, remote):
     assert (ws.state_dir / "keyframes" / "02" / "pick-key02.png").read_bytes() == b"picked"
     assert report.rows[0][3] == "file"
     assert entry(ws, "02")["keyframe"]["asset_id"] == "key02"  # 选用不被 fetch 改动
+
+
+async def test_last_frame_outside_candidates_is_downloaded_separately(ws, remote):
+    """跨镜选作尾帧的媒资不在本镜候选里，fetch keyframe 也应下载下来供进度网页展示。"""
+    data = ws.load()
+    next(e for e in data["shots"] if e["key"] == "02")["keyframe"]["last"] = "end02"
+    ws.save(data)
+    remote.add_asset("key02", "image", b"first", "02.png")
+    remote.add_asset("end02", "image", b"last", "02-end.png")
+    await fetch(ws, remote, "keyframe", "02", http=remote.http())
+    assert (ws.state_dir / "keyframes" / "02" / "pick-end02.png").read_bytes() == b"last"
+    # 重跑不重复下载
+    remote.http_hits.clear()
+    await fetch(ws, remote, "keyframe", "02", http=remote.http())
+    assert remote.http_hits == []

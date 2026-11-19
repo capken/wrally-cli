@@ -5,6 +5,7 @@ rm：远端软删除（进回收站），清单里去掉这几镜。被去掉的
 order：让网页上的场次顺序和清单一致；--by-key 先把清单按镜号排好。远端和清单的场次要一一对应。
 """
 
+import re
 import shutil
 from dataclasses import dataclass, field
 
@@ -98,7 +99,8 @@ async def rm(ws: Workspace, client: McpClient, spec: str, *, dry_run: bool = Fal
 
 def _key_order(entry: CommentedMap) -> tuple:
     key = str(entry["key"])
-    return (0, int(key), key) if key.isdigit() else (1, 0, key)
+    m = re.match(r"^(\d+)(.*)$", key)
+    return (0, int(m.group(1)), m.group(2), key) if m else (1, 0, "", key)
 
 
 async def order(

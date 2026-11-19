@@ -60,6 +60,10 @@ def _material(ws: Workspace, entry: dict, name: str) -> tuple[str | None, float 
 def collect(ws: Workspace, data: dict, spec: str = "all") -> dict[str, Any]:
     shots = []
     from wrally.commands.upscale import current_file  # 放在函数里导入：带进画布接口的模块
+    from wrally.prompts import load_styles
+
+    styles = load_styles(ws, data)
+    defaults = ws.settings(data, "defaults")
 
     for entry in select(data, spec):
         video, video_seconds = _material(ws, entry, "video")
@@ -87,7 +91,7 @@ def collect(ws: Workspace, data: dict, spec: str = "all") -> dict[str, Any]:
             "narration": narration,
             "skip": [str(k) for k in entry.get("skip") or []],
             "missing": missing,
-            "stale": stale(ws, data, entry),
+            "stale": stale(ws, data, entry, styles=styles, defaults=defaults),
             "extra": {str(k): plain(v) for k, v in entry.items() if k not in SHOT_KEYS},
         })  # fmt: skip
     project, shared = ws.project_path(), ws.project()

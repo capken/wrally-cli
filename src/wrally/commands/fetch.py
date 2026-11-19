@@ -174,10 +174,12 @@ async def _keyframes(ws, client, entries, results, raw_assets, http) -> FetchRep
             owners.append(key)
             new += 1
         picked = kf.get("asset_id")
-        # 选用的图可能不在候选里（网页上传、画布生成），单独下载一份供核对和检查用
-        if picked and picked not in ids and not _has(directory, f"pick-{picked}"):
-            plan.append((picked, directory / f"pick-{picked}"))
-            owners.append(key)
+        last = kf.get("last")
+        # 选用的首帧或尾帧可能不在候选里（网页上传、画布生成、跨镜复用），单独下载一份供核对和页面展示用
+        for extra in dict.fromkeys(a for a in (picked, last) if a and a not in ids):
+            if not _has(directory, f"pick-{extra}"):
+                plan.append((extra, directory / f"pick-{extra}"))
+                owners.append(key)
         if ids:
             section(entry, "keyframe")["candidates"] = flow_seq(ids)
         pick = letter(ids.index(picked)) if picked in ids else ("file" if picked else "-")
