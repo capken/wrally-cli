@@ -283,7 +283,7 @@ button.alert:hover { filter: brightness(.95); }
 
 .cands-head { flex: none; display: flex; align-items: baseline; gap: 8px; margin: 10px 0 6px; }
 .cands-head .pick { margin-left: auto; color: var(--ink-2); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.strip { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 2px; margin: -2px; scrollbar-width: none; }
+.strip { flex: none; display: flex; gap: 8px; overflow-x: auto; padding: 5px 6px; margin: -5px -6px; scrollbar-width: none; }
 .strip::-webkit-scrollbar { height: 0; }
 .cand {
   position: relative; flex: none; height: 58px; min-width: 54px; aspect-ratio: var(--ar); overflow: hidden; border: 2px solid transparent;
@@ -481,7 +481,7 @@ kbd { font: 10px ui-monospace, "SF Mono", monospace; color: var(--ink-2); backgr
 .nav-btn.next { right: 12px; }
 .lb-meta { flex: none; display: flex; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 .lb-meta .note { color: var(--ink-2); font-size: 12px; }
-.lb-thumbs { flex: none; display: flex; gap: 6px; margin-top: 10px; padding: 10px 2px 2px; border-top: .5px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.lb-thumbs { flex: none; display: flex; gap: 8px; margin-top: 10px; padding: 10px 6px 6px; border-top: .5px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .lb-thumbs .cand { height: 42px; min-width: 46px; border-radius: 7px; }
 
 /* 中等宽度 1080px - 1199px：略收紧左右栏，给中间画布留宽 */

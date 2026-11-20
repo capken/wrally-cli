@@ -121,11 +121,11 @@
   }
 
   // 只滚动 box 自己，把 item 露出来。scrollIntoView 会连带整页一起滚
-  function revealIn(box, item) {
+  function revealIn(box, item, pad = 6) {
     if (!item) return;
     const b = box.getBoundingClientRect(), r = item.getBoundingClientRect();
-    box.scrollLeft += r.left < b.left ? r.left - b.left : r.right > b.right ? r.right - b.right : 0;
-    box.scrollTop += r.top < b.top ? r.top - b.top : r.bottom > b.bottom ? r.bottom - b.bottom : 0;
+    box.scrollLeft += r.left < b.left + pad ? r.left - (b.left + pad) : r.right > b.right - pad ? r.right - (b.right - pad) : 0;
+    box.scrollTop += r.top < b.top + pad ? r.top - (b.top + pad) : r.bottom > b.bottom - pad ? r.bottom - (b.bottom - pad) : 0;
   }
 
   // 三级剪贴板回退：Clipboard API -> 隐藏 textarea + execCommand -> 手动选中提示
