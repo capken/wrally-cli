@@ -4,6 +4,19 @@
     const wanted = live.filter(s => stateOf(s, kind) !== "skipped");
     return [kind, [wanted.filter(s => stateOf(s, kind) === "done").length, wanted.length]];
   }));
+  const themeButton = el("button", { class: "theme-btn", "aria-label": "切换浅色 / 深色主题", onclick: () => {
+    const cur = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+    const next = cur === "dark" ? "light" : "dark";
+    applyTheme(next);
+    saveTheme(next);
+    syncThemeButton();
+  } });
+  function syncThemeButton() {
+    const isDark = currentTheme === "dark";
+    themeButton.title = isDark ? "切换到浅色主题" : "切换到深色主题";
+    put(themeButton, icon(isDark ? "sun" : "moon"), el("span", { text: isDark ? "浅色" : "深色" }));
+  }
+  syncThemeButton();
   const filmButton = data.film && el("button", { class: "film-btn", title: "播放整集成片", onclick: () => openFilm() },
     el("span", { class: "ico" }, icon("play")), el("span", { text: "播放成片" }), el("span", { class: "dur" }));
   if (filmButton) {
@@ -19,13 +32,21 @@
       el("h1", { text: data.title || data.name })),
     el("div", { class: "head-right" },
       el("p", { class: "meta", text: [`${live.length} 镜`, ...KINDS.map(([k, l]) => `${l} ${counts[k].join("/")}`)].join(" · ") }),
+      themeButton,
       filmButton));
 
   // ---- 概览条：整体进度、当前阶段、要处理的镜头、生成方式、各阶段 -----------------
   (() => {
     let done = 0, total = 0;
     for (const [kind] of KINDS) { done += counts[kind][0]; total += counts[kind][1]; }
-    const pct = total ? Math.round(done / total * 100) : 0;
+    const webDiffCount = live.filter(webDiffers).length;
+    const flagged = live.filter(needsWork).length;
+    if (webDiffCount > 0) {
+      done += live.length - webDiffCount;
+      total += live.length;
+    }
+    let pct = total ? Math.round(done / total * 100) : 0;
+    if ((done < total || flagged > 0) && pct >= 100) pct = 99;
     const kfWanted = live.filter(s => stateOf(s, "keyframe") !== "skipped");
     const need = (s, kind, p) => stateOf(s, kind) === "skipped" || Boolean(s.prompts[p]);
     const stages = [
@@ -34,15 +55,16 @@
       ["选图", kfWanted.filter(s => ["done", "missing"].includes(stateOf(s, "keyframe"))).length, kfWanted.length],
       ["视频", ...counts.video], ["旁白", ...counts.audio], ["成片", data.film ? 1 : 0, 1],
     ];
+    if (webDiffCount > 0) stages.push(["网页同步", live.length - webDiffCount, live.length]);
     const now = stages.find(([, a, b]) => a < b);
-    const flagged = live.filter(needsWork).length;
+    const stageText = now ? `${now[0]} ${now[1]}/${now[2]}` : flagged ? `待处理 ${flagged} 镜` : "全部完成";
     const pairs = live.filter(isPair).length;
     document.getElementById("overview").append(
       el("div", { class: "ov-main" }, el("span", { class: "pct" }, String(pct), el("i", { text: "%" })), el("span", { class: "cap", text: "整体进度" })),
       el("div", { class: "track", role: "progressbar", "aria-valuenow": pct, "aria-valuemin": 0, "aria-valuemax": 100 },
         el("i", { style: `width:${pct}%` })),
       el("div", { class: "ov-stats" },
-        el("div", { class: "stat" }, el("span", { class: "cap", text: "当前阶段" }), el("b", { text: now ? `${now[0]} ${now[1]}/${now[2]}` : "全部完成" })),
+        el("div", { class: "stat" }, el("span", { class: "cap", text: "当前阶段" }), el("b", { class: !now && flagged ? "warn" : null, text: stageText })),
         el("div", { class: "stat" }, el("span", { class: "cap", text: "需要处理" }),
           el("b", { class: flagged || data.note ? "warn" : null, text: data.note ? "公共文本读取失败" : flagged ? `${flagged} 镜` : "没有" })),
         el("div", { class: "stat" }, el("span", { class: "cap", text: "生成方式" }), el("b", { text: `首尾帧 ${pairs} · 单图 ${live.length - pairs}` }))),
@@ -53,7 +75,7 @@
   // ---- 筛选和镜头列表 ---------------------------------------------------------
   const FILTERS = [["all", "全部", () => true], ["open", "未完成", isOpen], ["warn", "需处理", needsWork],
     ["running", "生成中", hasState("running")], ["failed", "失败", hasState("failed")]];
-  const current = { filter: "all", key: null, media: "keyframe" };
+  const current = { filter: "all", key: null, media: "keyframe", videoSource: "upscaled" };
   const shown = () => data.shots.filter((FILTERS.find(([f]) => f === current.filter) || FILTERS[0])[2]);
   const byKey = new Map(data.shots.map(s => [s.key, s]));
   const filters = document.getElementById("filters");
@@ -65,15 +87,21 @@
     const kf = shot.keyframe;
     const thumb = cover(shot) || (kf.candidates.find(c => c.src) || {}).src;
     const [label, tone] = badge(shot);
+    const hasVideo = Boolean(shot.video.src || (upscaleOf(shot) && upscaleOf(shot).src));
+    const pipTitle = KINDS.map(([kind, klabel]) => `${klabel}:${shot[kind].status.label}`).join(" · ");
+    const pips = el("span", { class: "pips", title: pipTitle, "aria-label": pipTitle },
+      KINDS.map(([kind]) => el("span", { class: "pip " + (shot.cut ? "idle" : TONE[stateOf(shot, kind)]) })));
+    const statusCls = "shot-status" + (tone === "bad" ? " bad" : tone === "warn" ? " warn" : tone === "run" ? " run" : "");
     return el("button", { class: "shot" + (shot.cut ? " cut" : ""), "data-shot": shot.key, "data-open": isOpen(shot) ? "1" : "0",
-      "aria-current": String(shot.key === current.key), title: `${shot.key} · ${label}`, onclick: () => focusShot(shot.key) },
+      "aria-current": String(shot.key === current.key), title: `${shot.key} · ${label}（${pipTitle}）`, onclick: () => focusShot(shot.key) },
       el("span", { class: "thumb" }, thumb && el("img", { src: thumb, alt: "", loading: "lazy" }),
-        el("span", { class: "dot " + tone }), shot.video.src && el("span", { class: "has-video" })),
+        hasVideo && el("span", { class: "has-video" })),
       el("span", { class: "shot-cap" },
         el("span", { class: "shot-line" }, el("span", { class: "shot-key", text: shot.key }),
           el("span", { class: "shot-name", text: shot.narration || "（没有台词）" })),
-        el("span", { class: "shot-meta" }, el("span", { class: "mode" + (isPair(shot) ? " pair" : ""), text: isPair(shot) ? "首尾帧" : "单图" }),
-          tone === "ok" ? el("span", { text: label }) : el("span", { class: tone === "bad" ? "bad" : tone === "warn" ? "warn" : null, text: label }))));
+        el("span", { class: "shot-meta" }, pips,
+          el("span", { class: "mode" + (isPair(shot) ? " pair" : ""), text: isPair(shot) ? "首尾帧" : "单图" }),
+          el("span", { class: statusCls, text: label }))));
   }
   function drawRail() {
     const list = shown();

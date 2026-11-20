@@ -476,3 +476,100 @@ def test_ref_assets_from_previews_and_other_episodes(ws, tmp_path_factory):
     assert refs["门"]["src"] is None  # 登记的预览图不在
     # 预览图换了，--watch 也要发现
     assert any("人物.png" in p for p, _ in page.signature(ep2))
+
+
+def test_video_upscaled_states(ws):
+    assert shot(ws, "01")["video"]["upscaled"] is None
+
+    put(ws, ".wrally/video/02.mp4")
+    put(ws, ".wrally/video/02-x2.mp4")
+    edit(
+        ws,
+        "02",
+        lambda e: e.update(
+            video={
+                "status": "done",
+                "asset_id": "v2",
+                "file": ".wrally/video/02.mp4",
+                "upscaled": {
+                    "status": "done",
+                    "source": "v2",
+                    "scale": "2",
+                    "file": ".wrally/video/02-x2.mp4",
+                },
+            }
+        ),
+    )
+    vid = shot(ws, "02")["video"]
+    assert vid["status"]["state"] == "done"
+    assert vid["upscaled"]["status"]["state"] == "done"
+    assert vid["upscaled"]["scale"] == "2"
+    assert vid["upscaled"]["src"].startswith(".wrally/video/02-x2.mp4?v=")
+
+    # done 但超分文件不在：标为 missing
+    (ws.root / ".wrally/video/02-x2.mp4").unlink()
+    up = shot(ws, "02")["video"]["upscaled"]
+    assert up["status"]["state"] == "missing"
+    assert up["status"]["note"] == "run: wrally video upscale"
+    assert up["src"] is None
+
+    # 原视频换了（source != video.asset_id）：超分过期，原视频仍为 done
+    put(ws, ".wrally/video/02-x2.mp4")
+    edit(ws, "02", lambda e: e["video"]["upscaled"].update(source="v1"))
+    vid = shot(ws, "02")["video"]
+    assert vid["status"]["state"] == "done"
+    assert vid["upscaled"]["status"]["state"] == "stale"
+    assert vid["upscaled"]["status"]["note"].startswith("upscale")
+
+    # running / submitting
+    for st in ("running", "submitting"):
+        edit(ws, "02", lambda e, st=st: e["video"]["upscaled"].update(status=st))
+        assert shot(ws, "02")["video"]["upscaled"]["status"]["state"] == "running"
+
+    # failed 带错误说明
+    edit(ws, "02", lambda e: e["video"].update(upscaled={"status": "failed", "scale": "2", "error": "boom"}))
+    up = shot(ws, "02")["video"]["upscaled"]
+    assert up["status"]["state"] == "failed" and up["status"]["note"] == "boom"
+
+    # 未知状态回落到 none
+    edit(ws, "02", lambda e: e["video"].update(upscaled={"scale": "2"}))
+    assert shot(ws, "02")["video"]["upscaled"]["status"]["state"] == "none"
+
+
+def test_replaced_video_clears_upscaled(ws, tmp_path_factory):
+    root, (ep1,) = project_with(ws, tmp_path_factory, names=("ep1",))
+    (root / "wrally.yaml").write_text("title: 示例片\npage: {video: assemble.video}\n", encoding="utf-8")
+    put(ep1, ".wrally/video/02.mp4")
+    put(ep1, ".wrally/video/02-x2.mp4")
+    put(ep1, "local-02.mp4")
+    data = ep1.load()
+    data["assemble"] = {"video": {"02": "local-02.mp4"}}
+    target = next(e for e in data["shots"] if e["key"] == "02")
+    target["video_duration"] = 6
+    target["video_resolution"] = 3
+    target["video"] = {
+        "status": "done",
+        "asset_id": "v2",
+        "file": ".wrally/video/02.mp4",
+        "upscaled": {"status": "done", "source": "v2", "scale": "2", "file": ".wrally/video/02-x2.mp4"},
+    }
+    ep1.save(data)
+
+    vid = shot(ep1, "02")["video"]
+    assert vid["status"]["state"] == "done"
+    assert vid["upscaled"] is None
+    assert vid["duration"] == 6 and vid["resolution"] == 3
+
+
+def test_video_duration_and_resolution_overrides(ws):
+    assert shot(ws, "01")["video"]["duration"] is None
+    assert shot(ws, "01")["video"]["resolution"] is None
+
+    edit(ws, "02", lambda e: e.update(video_duration=8, video_resolution=3))
+    vid = shot(ws, "02")["video"]
+    assert vid["duration"] == 8 and vid["resolution"] == 3
+
+    for bad in (0, -3, True, False, "5", 4.5, None):
+        edit(ws, "02", lambda e, bad=bad: e.update(video_duration=bad, video_resolution=bad))
+        vid = shot(ws, "02")["video"]
+        assert vid["duration"] is None and vid["resolution"] is None

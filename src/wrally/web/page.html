@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wrally</title>
+<style>
+__WRALLY_CSS__
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top wrap" id="top"></header>
+  <div class="body wrap">
+    <div class="main">
+      <section class="overview" id="overview"></section>
+      <nav class="seg filters" id="filters" aria-label="镜头筛选"></nav>
+      <div class="shots"><div class="rail" id="rail"></div></div>
+      <article class="detail" id="detail"></article>
+      <aside class="info" id="info"></aside>
+    </div>
+  </div>
+  <footer class="foot wrap" id="foot"></footer>
+</div>
+<div class="drawer-backdrop" id="drawer-backdrop" aria-hidden="true"></div>
+<div class="modal-host" id="modal"></div>
+<script id="data" type="application/json">__WRALLY_DATA__</script>
+<script>
+(() => {
+__WRALLY_JS__
+})();
+</script>
+</body>
+</html>

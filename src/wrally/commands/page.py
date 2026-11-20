@@ -127,6 +127,34 @@ def _keyframe(ws: Workspace, entry: dict) -> dict[str, Any]:
     }  # fmt: skip
 
 
+def _pos_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+def _upscaled(ws: Workspace, entry: dict, stale: list[str]) -> dict[str, Any] | None:
+    video = entry.get("video")
+    up = video.get("upscaled") if isinstance(video, dict) else None
+    if not isinstance(up, dict) or not up:
+        return None
+    up_state = str(up.get("status") or "")
+    scale = str(up.get("scale") or "")
+    src = _src(ws, ws.root / str(up["file"])) if up.get("file") else None
+    why = next((s for s in stale if s.startswith("upscale")), "")
+    if up_state in RUNNING:
+        status = _state("running")
+    elif up_state == "failed":
+        status = _state("failed", str(up.get("error") or ""))
+    elif up_state == "done" and why:
+        status = _state("stale", why)
+    elif up_state == "done" and not src:
+        status = _state("missing", "run: wrally video upscale")
+    elif up_state == "done":
+        status = _state("done")
+    else:
+        status = _state("none")
+    return {"status": status, "scale": scale, "src": src}
+
+
 def _media(ws: Workspace, entry: dict, name: str, stale: list[str]) -> dict[str, Any]:
     sec = entry.get(name) or {}
     src = _src(ws, ws.root / str(sec["file"])) if sec.get("file") else None
@@ -248,7 +276,15 @@ def collect(ws: Workspace) -> dict[str, Any]:
             path = final[key]
             replaced = os.path.relpath(path.resolve(), ws.root.resolve())
             src = _src(ws, path)
-            video = {"status": _state("done", "") if src else _state("missing", replaced), "src": src}
+            video = {
+                "status": _state("done", "") if src else _state("missing", replaced),
+                "src": src,
+                "upscaled": None,
+            }
+        else:
+            video["upscaled"] = _upscaled(ws, entry, stale)
+        video["duration"] = _pos_int(entry.get("video_duration"))
+        video["resolution"] = _pos_int(entry.get("video_resolution"))
         shots.append({
             "key": key,
             "cut": key in cut,

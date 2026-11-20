@@ -1,7 +1,28 @@
   // ---- 浮层 ---------------------------------------------------------------------
   const host = document.getElementById("modal");
-  let modal = null;  // 打开着的浮层：{ step, kind }
+  const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  let modal = null;  // 打开着的浮层：{ kind, step, toggleCompare, toggleGrid }
+  let modalTrigger = null;
+
+  function trapModalFocus(e) {
+    if (!modal || e.key !== "Tab") return;
+    const box = host.querySelector(".modal");
+    if (!box) return;
+    const nodes = [...box.querySelectorAll(FOCUSABLE)].filter(n => n.offsetParent !== null);
+    if (!nodes.length) { e.preventDefault(); return; }
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first || !box.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last || !box.contains(document.activeElement)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
   function openModal(node, extra) {
+    if (!modal) modalTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     for (const m of document.querySelectorAll("video, audio")) m.pause();
     put(host, node);
     host.classList.add("open");
@@ -15,6 +36,9 @@
     host.classList.remove("open");
     put(host);
     modal = null;
+    const prev = modalTrigger;
+    modalTrigger = null;
+    if (prev && prev.isConnected) prev.focus({ preventScroll: true });
   }
   host.addEventListener("click", e => { if (e.target === host) closeModal(); });
   const head = (eyebrow, title) => el("div", { class: "modal-head" },
@@ -79,7 +103,7 @@
       el("div", { class: "modal-foot" }, el("span", { text: "keyframe gen 用它们当参考图" }))));
   }
 
-  // 候选大图：左右切换，底下给出选图的命令（页面不改清单）
+  // 候选大图 / 并排对比 / 全览网格：左右切换，底下给出选图命令（页面不改清单）
   function candidates(shot) {
     const kf = shot.keyframe;
     const items = kf.candidates.filter(c => c.src);
@@ -95,40 +119,108 @@
   function openCand(shot, start) {
     const items = candidates(shot);
     if (!items.length) return;
+    const pickedIdx = items.findIndex(c => c.picked);
+    const suggestedIdx = items.findIndex(c => c.suggested);
+    let anchor = pickedIdx >= 0 ? pickedIdx : suggestedIdx >= 0 ? suggestedIdx : 0;
     let at = Math.max(0, Math.min(items.length - 1, start));
+    let view = items.length >= 2 && at !== anchor ? "compare" : "single";
+
     const eyebrow = el("div", { class: "cap" }), title = el("h2", { class: "modal-title" });
-    const img = el("img", { alt: "", onload: orient });
-    const prev = el("button", { class: "nav-btn prev", "aria-label": "上一张", text: "‹", onclick: () => go(at - 1) });
-    const next = el("button", { class: "nav-btn next", "aria-label": "下一张", text: "›", onclick: () => go(at + 1) });
+    const modeButtons = items.length >= 2 ? [
+      ["single", "单图"],
+      ["compare", "并排对比"],
+      ["grid", `全览网格 (${items.length})`],
+    ].map(([mode, text]) => el("button", { "data-mode": mode, "aria-pressed": String(view === mode), text,
+      onclick: () => setView(mode) })) : [];
+    const modeBar = modeButtons.length ? el("div", { class: "lb-mode", role: "group", "aria-label": "候选查看模式" }, modeButtons) : null;
+
+    const stageHost = el("div", { style: "flex:1 1 auto;min-height:0;display:flex;flex-direction:column;" });
     const meta = el("div", { class: "lb-meta" });
     const thumbs = items.map((c, i) => el("button", { class: "cand" + (c.picked ? " picked" : c.last ? " last" : c.suggested ? " suggested" : ""),
       title: candName(c), onclick: () => go(i) }, el("img", { src: c.src, alt: "" }), el("span", { class: "a", text: c.label || "选用" })));
     const strip = el("div", { class: "lb-thumbs" }, thumbs);
     const foot = el("div", { class: "modal-foot" });
+
+    function setView(next) {
+      if (items.length < 2 && next !== "single") return;
+      if (next === "compare" && at === anchor && items.length >= 2) at = (anchor + 1) % items.length;
+      view = next;
+      render();
+    }
     function go(i) {
       if (i < 0 || i >= items.length) return;
       at = i;
-      const c = items[at], kf = shot.keyframe;
-      eyebrow.textContent = `镜头 ${shot.key} · ${modeName(shot)} · ${at + 1} / ${items.length}`;
-      title.textContent = candName(c);
-      img.src = c.src;
-      prev.disabled = at === 0;
-      next.disabled = at === items.length - 1;
-      put(meta, ...candTags(c), c.suggested && kf.suggest_note && el("span", { class: "note", text: kf.suggest_note }));
-      thumbs.forEach((t, j) => t.classList.toggle("on", j === at));
-      revealIn(strip, thumbs[at]);
+      render();
+    }
+    function renderFoot(c) {
       put(foot,
         c.label && !c.picked ? command(`wrally keyframe pick ${shot.key} ${c.label}`, "复制") : el("span", { text: c.picked ? "这一张是选用图" : "" }),
         c.label && !c.picked && !c.last ? command(`wrally keyframe pick ${shot.key} ${c.label} --last`, "复制") : null,
-        el("span", { class: "grow" }), el("span", { text: "页面不改清单，选图用命令" }));
-      // 当前候选记下来，刷新后接着看这张
+        el("span", { class: "grow" }), el("span", { text: items.length >= 2 ? "C 对比 · G 网格 · 选图用命令" : "页面不改清单，选图用命令" }));
+    }
+    function render() {
+      const c = items[at], left = items[anchor], kf = shot.keyframe;
+      for (const b of modeButtons) b.setAttribute("aria-pressed", String(b.dataset.mode === view));
+      eyebrow.textContent = `镜头 ${shot.key} · ${modeName(shot)} · ${at + 1} / ${items.length}`;
+      if (view === "single") {
+        title.textContent = candName(c);
+        const prev = el("button", { class: "nav-btn prev", "aria-label": "上一张", text: "‹", disabled: at === 0, onclick: () => go(at - 1) });
+        const next = el("button", { class: "nav-btn next", "aria-label": "下一张", text: "›", disabled: at === items.length - 1, onclick: () => go(at + 1) });
+        put(stageHost, el("div", { class: "stage" }, el("img", { src: c.src, alt: "", onload: orient }), prev, next));
+        put(meta, ...candTags(c), c.suggested && kf.suggest_note && el("span", { class: "note", text: kf.suggest_note }));
+        meta.classList.remove("hidden");
+        strip.classList.remove("hidden");
+      } else if (view === "compare") {
+        title.textContent = `${candName(left)} 对比 ${candName(c)}`;
+        const prev = el("button", { class: "nav-btn prev", "aria-label": "上一张候选", text: "‹", disabled: at === 0, onclick: () => go(at - 1) });
+        const next = el("button", { class: "nav-btn next", "aria-label": "下一张候选", text: "›", disabled: at === items.length - 1, onclick: () => go(at + 1) });
+        const pinBtn = at !== anchor ? el("button", { class: "pin-btn", text: "设为基准", onclick: () => { anchor = at; render(); } }) : null;
+        put(stageHost, el("div", { class: "compare-stage" },
+          el("div", { class: "compare-pane anchor" },
+            el("div", { class: "compare-cap" }, el("span", { class: "compare-label", text: `基准：${candName(left)}` }), ...candTags(left)),
+            el("div", { class: "compare-pic" }, el("img", { src: left.src, alt: "", onload: orient }))),
+          el("div", { class: "compare-pane active" },
+            el("div", { class: "compare-cap" }, el("span", { class: "compare-label", text: `候选：${candName(c)}` }), ...candTags(c), pinBtn),
+            el("div", { class: "compare-pic" }, el("img", { src: c.src, alt: "", onload: orient }), prev, next))));
+        const note = c.suggested && kf.suggest_note ? kf.suggest_note : left.suggested && kf.suggest_note ? `基准推荐：${kf.suggest_note}` : "";
+        put(meta, note && el("span", { class: "note", text: note }));
+        meta.classList.toggle("hidden", !note);
+        strip.classList.remove("hidden");
+      } else {
+        title.textContent = `全部候选（${items.length} 张）`;
+        put(stageHost, el("div", { class: "compare-grid" }, items.map((item, i) =>
+          el("button", { class: "grid-card" + (i === at ? " on" : ""), onclick: () => {
+            at = i;
+            view = i === anchor ? "single" : "compare";
+            render();
+          } },
+            el("div", { class: "grid-pic" }, el("img", { src: item.src, alt: "", loading: "lazy", onload: orient })),
+            el("div", { class: "grid-cap" }, el("span", { class: "grid-name", text: candName(item) }),
+              i === anchor && items.length >= 2 && el("span", { class: "tag", text: "基准" }),
+              ...candTags(item))))));
+        put(meta, el("span", { class: "note", text: "点任意一张进入并排对比，点基准图查看单图大图" }));
+        meta.classList.remove("hidden");
+        strip.classList.add("hidden");
+      }
+      thumbs.forEach((t, j) => t.classList.toggle("on", j === at));
+      if (view !== "grid") revealIn(strip, thumbs[at]);
+      renderFoot(c);
       current.cand = c.label;
     }
+
     openModal(el("div", { class: "modal wide", role: "dialog", "aria-modal": "true" },
-      el("div", { class: "modal-head" }, el("div", { style: "min-width:0" }, eyebrow, title),
-        el("button", { class: "close", "aria-label": "关闭", text: "×", onclick: closeModal })),
-      el("div", { class: "stage" }, img, prev, next), meta, strip, foot), { step: d => go(at + d) });
-    go(at);
+      el("div", { class: "modal-head" },
+        el("div", { style: "min-width:0" }, eyebrow, title),
+        el("div", { class: "modal-head-actions" }, modeBar,
+          el("button", { class: "close", "aria-label": "关闭", text: "×", onclick: closeModal }))),
+      stageHost, meta, strip, foot),
+      {
+        kind: "cand",
+        step: d => go(at + d),
+        toggleCompare: () => { if (items.length >= 2) setView(view === "compare" ? "single" : "compare"); },
+        toggleGrid: () => { if (items.length >= 2) setView(view === "grid" ? "compare" : "grid"); },
+      });
+    render();
   }
   function openFilm() {
     openModal(el("div", { class: "modal wide", role: "dialog", "aria-modal": "true" },

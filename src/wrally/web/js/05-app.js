@@ -3,25 +3,51 @@
     for (const m of document.querySelectorAll("video, audio")) if (m !== e.target) m.pause();
   }, true);
 
-  // 键盘：J / K 上下一镜，V 换关键帧 / 视频；大图里左右换候选；Esc 关浮层
+  // 键盘：J/K 切镜，V 视频，Space 旁白，I 半屏抽屉，←/→ 候选；大图里 ←/→ 翻页、C 对比、G 网格；Esc 关浮层或抽屉
   document.addEventListener("keydown", e => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (modal) {
+      if (e.key === "Tab") { trapModalFocus(e); return; }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const lower = e.key.toLowerCase();
       if (e.key === "Escape") closeModal();
       else if (modal.step && (e.key === "ArrowRight" || e.key === "ArrowLeft")) { e.preventDefault(); modal.step(e.key === "ArrowRight" ? 1 : -1); }
+      else if (modal.toggleCompare && lower === "c") { e.preventDefault(); modal.toggleCompare(); }
+      else if (modal.toggleGrid && lower === "g") { e.preventDefault(); modal.toggleGrid(); }
       return;
     }
-    // 焦点在播放器上时，按键留给它
-    if (e.target instanceof Element && e.target.matches("video, audio")) return;
-    const step = { j: 1, k: -1 }[e.key.toLowerCase()];
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "Escape") {
+      if (document.body.classList.contains("drawer-open")) setDrawer(false);
+      return;
+    }
+    const target = e.target instanceof Element ? e.target : null;
+    if (target && target.matches("video, audio, input, textarea, select")) return;
+    if (e.key === " " || e.code === "Space") {
+      if (target && (target.matches('[role="slider"], a') || (target.matches("button") && !target.classList.contains("shot")))) return;
+      const audio = info.querySelector("audio");
+      if (audio) {
+        e.preventDefault();
+        audio.paused ? audio.play().catch(() => {}) : audio.pause();
+      }
+      return;
+    }
+    const lower = e.key.toLowerCase();
+    const step = { j: 1, k: -1 }[lower];
     if (step) {
       const list = shown(), at = list.findIndex(s => s.key === current.key);
       const next = list[Math.min(list.length - 1, Math.max(0, at + step))];
       if (next && next.key !== current.key) focusShot(next.key);
-    } else if (e.key.toLowerCase() === "v") {
+    } else if (lower === "v") {
       const shot = byKey.get(current.key);
-      if (shot && shot.video.src) setMedia(current.media === "video" ? "keyframe" : "video");
+      if (shot && hasPlayableVideo(shot)) setMedia(current.media === "video" ? "keyframe" : "video");
+    } else if (lower === "i") {
+      const toggle = detail.querySelector(".info-toggle");
+      if (toggle && getComputedStyle(toggle).display !== "none") {
+        e.preventDefault();
+        toggleDrawer();
+      }
     } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      if (target && target.matches('[role="slider"]')) return;
       const shot = byKey.get(current.key);
       if (!shot) return;
       e.preventDefault();
@@ -37,7 +63,8 @@
     data.note && el("span", { class: "note", text: "· 公共文本读取失败：" + data.note }),
     el("span", { class: "grow" }), el("span", { text: running ? `${running} 镜生成中` : "无进行中任务" }),
     el("span", { class: "keys" }, " · ", el("kbd", { text: "J" }), " ", el("kbd", { text: "K" }), " 上下一镜 ",
-      el("kbd", { text: "V" }), " 视频 ", el("kbd", { text: "←" }), " ", el("kbd", { text: "→" }), " 候选大图"));
+      el("kbd", { text: "V" }), " 视频 ", el("kbd", { text: "Space" }), " 旁白 ",
+      el("kbd", { text: "←" }), " ", el("kbd", { text: "→" }), " 候选大图"));
 
   // 刷新前后保持筛选、当前镜头、关键帧 / 视频和正在看的那张候选
   const STORE = "wrally-page:" + location.pathname;
@@ -72,7 +99,10 @@
   })();
   requestAnimationFrame(syncSegs);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncSegs);
-  window.addEventListener("resize", syncSegs);
+  window.addEventListener("resize", () => {
+    syncSegs();
+    if (window.innerWidth >= 1080 || window.innerWidth <= 899) setDrawer(false);
+  });
 
   // 发现更新：file:// 下不能 fetch，所以定时用 script 标签加载版本文件，它会调用 __wrallyPage
   const stamp = new Date(document.lastModified);
@@ -86,8 +116,11 @@
     offered = true;  // 正在播放或看提示词全文时不打断，等人来点
     put(fresh, el("button", { text: "有更新 · 点击刷新", onclick: () => location.reload() }));
   };
-  setInterval(() => {
+  function pollOnce() {
+    if (document.hidden) return;
     const probe = el("script", { src: ".wrally/page.version.js?t=" + Date.now() });
     probe.onload = probe.onerror = () => probe.remove();
     document.head.append(probe);
-  }, 3000);
+  }
+  setInterval(pollOnce, 3000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) pollOnce(); });
